@@ -335,7 +335,7 @@ fn next_script(s: &mut State) {
 
 /// The tray's line for the advice's mode (not in upstream).
 fn mode_label() -> String {
-    if vorax::bot::mean_goal() { "模式：衝分（測試中）".into() } else { "模式：保守（原作者）".into() }
+    if vorax::bot::mean_goal() { "模式：衝分".into() } else { "模式：保守（原作者）".into() }
 }
 
 /// Upstream's mode and the aggressive one in turn (not in upstream), kept in the settings; the board read again so
