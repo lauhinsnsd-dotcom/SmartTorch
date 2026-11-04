@@ -1,6 +1,8 @@
 //! Your runs, read from the debug log and shown in the tray menu's style: one card per run (when, how far, the
 //! instruments, how the advice's odds went), opened board by board with a click. Scrolls with the wheel, moves by
 //! its title, closes with Esc or ×; "Raw log" opens the file itself (attach that when reporting a misread board).
+//! Not in upstream: resized by dragging its right or bottom edge or its corner, zoomed with Ctrl + wheel (Chinese
+//! lines run longer than the English ones it was laid out for), the size kept for next time (runs-view.txt).
 
 use super::menu::put;
 use super::sys::data_dir;
@@ -15,7 +17,7 @@ use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORIN
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Time::{FileTimeToSystemTime, SystemTimeToTzSpecificLocalTime};
 use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
-use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
+use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 /// One board the overlay read and advised on.
@@ -211,6 +213,30 @@ fn fit(font: &crate::draw::Face, t: &str, px: f32, room: f32) -> String {
 }
 
 const W: f32 = 640.0;
+/// not in upstream: the sizes and zoom the window may be dragged to (logical pixels, before the zoom)
+const W_MIN: f32 = 480.0;
+const W_MAX: f32 = 1800.0;
+const H_MIN: f32 = 300.0;
+const ZOOM_MIN: f32 = 0.7;
+const ZOOM_MAX: f32 = 2.0;
+/// how near the panel's right or bottom edge (screen pixels) a press resizes it
+const GRIP: f32 = 10.0;
+
+/// Which edges a drag moves (not in upstream).
+#[derive(Clone, Copy, PartialEq)]
+struct Edges {
+    right: bool,
+    bottom: bool,
+}
+
+/// A resize under way: the edges, where the cursor started (screen pixels), and the size then.
+#[derive(Clone, Copy)]
+struct Drag {
+    edges: Edges,
+    from: (i32, i32),
+    w: f32,
+    h: f32,
+}
 const MARGIN: f32 = 12.0;
 const HEAD: f32 = 64.0;
 const RUN_H: f32 = 70.0;
@@ -234,6 +260,11 @@ struct View {
     hwnd: HWND,
     fonts: Rc<Fonts>,
     s: f32,
+    /// not in upstream: the panel's width (W unless dragged), the display's scale without the zoom, the zoom
+    w: f32,
+    dpi: f32,
+    zoom: f32,
+    drag: Option<Drag>,
     h: f32,
     runs: Vec<Run>,
     open: Vec<bool>,
@@ -273,11 +304,21 @@ impl View {
     }
     fn buttons(&self) -> ((f32, f32), (f32, f32)) {
         let raw_w = measure(&self.fonts.bold, "原始紀錄", 12.5) + 26.0;
-        ((W - 14.0 - 30.0 - 8.0 - raw_w, raw_w), (W - 14.0 - 30.0, 30.0))
+        ((self.w - 14.0 - 30.0 - 8.0 - raw_w, raw_w), (self.w - 14.0 - 30.0, 30.0))
+    }
+    /// The edges a press at (x, y) in the window would drag (not in upstream): near the panel's right or bottom edge.
+    fn edges(&self, x: f32, y: f32) -> Option<Edges> {
+        let (r, b) = ((MARGIN + self.w) * self.s, (MARGIN + self.h) * self.s);
+        let (l, t) = (MARGIN * self.s, MARGIN * self.s);
+        if x < l || y < t || x > r + GRIP || y > b + GRIP {
+            return None;
+        }
+        let e = Edges { right: x >= r - GRIP, bottom: y >= b - GRIP };
+        (e.right || e.bottom).then_some(e)
     }
     fn hit(&self, x: f32, y: f32) -> Option<Hit> {
         let (cx, cy) = (x / self.s - MARGIN, y / self.s - MARGIN);
-        if !(0.0..W).contains(&cx) || cy < 0.0 || cy > self.h {
+        if !(0.0..self.w).contains(&cx) || cy < 0.0 || cy > self.h {
             return None;
         }
         if cy < HEAD {
@@ -312,9 +353,9 @@ fn odds_colour(p: u32) -> (u8, u8, u8) {
 
 fn render(v: &View) -> Pixmap {
     let s = v.s;
-    let (w, h) = ((W + 2.0 * MARGIN) * s, (v.h + 2.0 * MARGIN) * s);
+    let (w, h) = ((v.w + 2.0 * MARGIN) * s, (v.h + 2.0 * MARGIN) * s);
     let mut pm = Pixmap::new(w.ceil() as u32, h.ceil() as u32).unwrap();
-    let (ox, oy, cw, ch) = (MARGIN * s, MARGIN * s, W * s, v.h * s);
+    let (ox, oy, cw, ch) = (MARGIN * s, MARGIN * s, v.w * s, v.h * s);
     for (grow, a) in [(10.0, 0.05), (6.0, 0.08), (3.0, 0.12)] {
         if let Some(p) = rounded(ox - grow * s, oy - grow * s + 3.0 * s, cw + 2.0 * grow * s, ch + 2.0 * grow * s, (14.0 + grow) * s) {
             pm.fill_path(&p, &paint(rgba(0, 0, 0, a)), FillRule::Winding, Transform::identity(), None);
@@ -436,7 +477,32 @@ fn render(v: &View) -> Pixmap {
             pm.fill_path(&p, &paint(rgba(255, 255, 255, 0.18)), FillRule::Winding, Transform::identity(), None);
         }
     }
+    // not in upstream: the corner to drag, three short diagonal lines
+    let (gx, gy) = (ox + cw - 6.0 * s, oy + ch - 6.0 * s);
+    for k in 1..=3 {
+        let d = 4.0 * k as f32 * s;
+        let mut pb = PathBuilder::new();
+        pb.move_to(gx - d, gy);
+        pb.line_to(gx, gy - d);
+        if let Some(p) = pb.finish() {
+            pm.stroke_path(&p, &paint(rgba(255, 255, 255, 0.25)), &Stroke { width: 1.2 * s, ..Default::default() }, Transform::identity(), None);
+        }
+    }
     pm
+}
+
+/// The size and zoom last left (not in upstream): "width height zoom" in runs-view.txt.
+fn saved_view() -> Option<(f32, f32, f32)> {
+    let t = std::fs::read_to_string(data_dir().join("runs-view.txt")).ok()?;
+    let v: Vec<f32> = t.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+    match v[..] {
+        [w, h, z] if w.is_finite() && h.is_finite() && z.is_finite() => Some((w.clamp(W_MIN, W_MAX), h.max(H_MIN), z.clamp(ZOOM_MIN, ZOOM_MAX))),
+        _ => None,
+    }
+}
+
+fn save_view(v: &View) {
+    let _ = std::fs::write(data_dir().join("runs-view.txt"), format!("{} {} {}", v.w, v.h, v.zoom));
 }
 
 fn redraw(v: &View) {
@@ -448,8 +514,10 @@ fn redraw(v: &View) {
     }
 }
 
+/// The view, unless a message came in while it's in use (a resize can send one): then nothing (not in upstream,
+/// which borrowed it outright).
 fn with<R>(f: impl FnOnce(&mut View) -> R) -> Option<R> {
-    VIEW.with(|c| c.borrow_mut().as_mut().map(f))
+    VIEW.with(|c| c.try_borrow_mut().ok().and_then(|mut v| v.as_mut().map(f)))
 }
 
 /// Opens the runs (or brings them to the front, read afresh), centred on the screen the cursor is on.
@@ -471,14 +539,17 @@ pub fn open(fonts: Rc<Fonts>) {
         let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
         let _ = GetMonitorInfoW(mon, &mut mi);
         let work = mi.rcWork;
-        let h = (((work.bottom - work.top) as f32 / s) * 0.82).min(820.0);
+        let most_h = ((work.bottom - work.top) as f32 / s) * 0.95;
+        let (w0, h0, zoom) = saved_view().unwrap_or((W, (((work.bottom - work.top) as f32 / s) * 0.82).min(820.0), 1.0));
+        let (dpi, s) = (s, s * zoom);
+        let h = h0.min(most_h / zoom).max(H_MIN);
         let n = runs.len();
         // the newest run open from the start
         let mut open = vec![false; n];
         if let Some(o) = open.first_mut() {
             *o = true;
         }
-        let v = View { hwnd: HWND::default(), fonts, s, h, runs, open, scroll: 0.0, hover: None };
+        let v = View { hwnd: HWND::default(), fonts, s, w: w0, dpi, zoom, drag: None, h, runs, open, scroll: 0.0, hover: None };
         let pm = render(&v);
         let (w, hh) = (pm.width() as i32, pm.height() as i32);
         let x = work.left + ((work.right - work.left) - w) / 2;
@@ -507,8 +578,69 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
         WM_NCHITTEST => {
             let mut r = RECT::default();
             let _ = GetWindowRect(hwnd, &mut r);
-            let on_title = with(|v| v.hit(x - r.left as f32, y - r.top as f32) == Some(Hit::Title)).unwrap_or(false);
+            // not in upstream: an edge to drag is the window's own, not the title's
+            let on_title = with(|v| {
+                let (cx, cy) = (x - r.left as f32, y - r.top as f32);
+                v.edges(cx, cy).is_none() && v.hit(cx, cy) == Some(Hit::Title)
+            })
+            .unwrap_or(false);
             LRESULT(if on_title { HTCAPTION as isize } else { HTCLIENT as isize })
+        }
+        // not in upstream: the resize cursor over an edge, and pressing there starts a resize
+        WM_SETCURSOR => {
+            let mut cur = POINT::default();
+            let _ = GetCursorPos(&mut cur);
+            let mut r = RECT::default();
+            let _ = GetWindowRect(hwnd, &mut r);
+            let e = with(|v| v.drag.map(|d| d.edges).or_else(|| v.edges((cur.x - r.left) as f32, (cur.y - r.top) as f32))).flatten();
+            match e {
+                Some(e) => {
+                    let id = match (e.right, e.bottom) {
+                        (true, true) => IDC_SIZENWSE,
+                        (true, false) => IDC_SIZEWE,
+                        _ => IDC_SIZENS,
+                    };
+                    if let Ok(c) = LoadCursorW(None, id) {
+                        SetCursor(c);
+                    }
+                    LRESULT(1)
+                }
+                None => DefWindowProcW(hwnd, msg, wp, lp),
+            }
+        }
+        WM_LBUTTONDOWN => {
+            let started = with(|v| match v.edges(x, y) {
+                Some(edges) => {
+                    let mut cur = POINT::default();
+                    let _ = GetCursorPos(&mut cur);
+                    v.drag = Some(Drag { edges, from: (cur.x, cur.y), w: v.w, h: v.h });
+                    true
+                }
+                None => false,
+            })
+            .unwrap_or(false);
+            if started {
+                SetCapture(hwnd);
+            }
+            LRESULT(0)
+        }
+        WM_MOUSEMOVE if with(|v| v.drag.is_some()).unwrap_or(false) => {
+            let mut cur = POINT::default();
+            let _ = GetCursorPos(&mut cur);
+            with(|v| {
+                if let Some(d) = v.drag {
+                    let (dx, dy) = ((cur.x - d.from.0) as f32 / v.s, (cur.y - d.from.1) as f32 / v.s);
+                    if d.edges.right {
+                        v.w = (d.w + dx).clamp(W_MIN, W_MAX);
+                    }
+                    if d.edges.bottom {
+                        v.h = (d.h + dy).max(H_MIN);
+                    }
+                    v.clamp();
+                    redraw(v);
+                }
+            });
+            LRESULT(0)
         }
         WM_MOUSEMOVE => {
             with(|v| {
@@ -522,10 +654,29 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
         }
         WM_MOUSEWHEEL => {
             let delta = ((wp.0 >> 16) & 0xffff) as i16 as f32;
+            // not in upstream: Ctrl + wheel zooms (MK_CONTROL, 0x0008)
+            if wp.0 & 0x0008 != 0 {
+                with(|v| {
+                    v.zoom = (v.zoom * if delta > 0.0 { 1.1 } else { 1.0 / 1.1 }).clamp(ZOOM_MIN, ZOOM_MAX);
+                    v.s = v.dpi * v.zoom;
+                    v.clamp();
+                    redraw(v);
+                    save_view(v);
+                });
+                return LRESULT(0);
+            }
             with(|v| {
                 v.scroll -= delta / 120.0 * 70.0;
                 v.clamp();
                 redraw(v);
+            });
+            LRESULT(0)
+        }
+        WM_LBUTTONUP if with(|v| v.drag.is_some()).unwrap_or(false) => {
+            let _ = ReleaseCapture();
+            with(|v| {
+                v.drag = None;
+                save_view(v);
             });
             LRESULT(0)
         }
@@ -564,7 +715,7 @@ pub fn preview(log: &str, fonts: Rc<Fonts>, s: f32, h: f32) -> Pixmap {
     if let Some(o) = open.first_mut() {
         *o = true;
     }
-    render(&View { hwnd: HWND::default(), fonts, s, h, runs, open, scroll: 0.0, hover: None })
+    render(&View { hwnd: HWND::default(), fonts, s, w: W, dpi: s, zoom: 1.0, drag: None, h, runs, open, scroll: 0.0, hover: None })
 }
 
 #[cfg(test)]
