@@ -3,9 +3,10 @@
 
 use std::path::{Path, PathBuf};
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, RECT};
+use windows::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM, POINT, RECT};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::System::Registry::{RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+use windows::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION};
 use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetClientRect, GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible};
 
 /// The game's window title.
@@ -103,6 +104,36 @@ fn quoted_values<'a>(text: &'a str, key: &str) -> Vec<&'a str> {
 
 const LOG_IN_GAME: [&str; 5] = ["UE_game", "TorchLight", "Saved", "Logs", "UE_game.log"];
 
+/// Not in upstream: the program behind the game's window, where it's installed (any launcher, any drive), when
+/// the game is open: "X:\...\Game\UE_game\Binaries\Win64\<exe>".
+fn game_exe() -> Option<PathBuf> {
+    let h = find_game_window()?;
+    unsafe {
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(h.get(), Some(&mut pid));
+        if pid == 0 {
+            return None;
+        }
+        let p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf = [0u16; 1024];
+        let mut n = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(p, PROCESS_NAME_WIN32, windows::core::PWSTR(buf.as_mut_ptr()), &mut n).is_ok();
+        let _ = CloseHandle(p);
+        ok.then(|| PathBuf::from(String::from_utf16_lossy(&buf[..n as usize])))
+    }
+}
+
+/// Not in upstream: where a game installed under `exe`'s folders writes its log: from each folder up, the log's
+/// path from "UE_game" on (the "Game" folder) or from under it (the "UE_game" folder itself).
+fn logs_above(exe: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for dir in exe.ancestors().skip(1) {
+        out.push(LOG_IN_GAME.iter().fold(dir.to_path_buf(), |p, s| p.join(s)));
+        out.push(LOG_IN_GAME[1..].iter().fold(dir.to_path_buf(), |p, s| p.join(s)));
+    }
+    out
+}
+
 /// Where the game writes UE_game.log: under each Steam library that has the game, or the launcher's folders.
 /// The newest log wins; without one yet, where it will appear.
 pub fn find_log() -> Option<PathBuf> {
@@ -143,6 +174,20 @@ pub fn find_log() -> Option<PathBuf> {
     }
     for base in ["C:\\Program Files (x86)\\Torchlight Infinite", "C:\\Program Files\\Torchlight Infinite"] {
         candidates.push(LOG_IN_GAME.iter().fold(PathBuf::from(base).join("Game"), |p, s| p.join(s)));
+    }
+    // not in upstream: the open game's own folders (the launcher's install on any drive), then the usual folders
+    // on every drive, so the start files need no path
+    if let Some(exe) = game_exe() {
+        candidates.extend(logs_above(&exe));
+    }
+    for d in 'C'..='Z' {
+        let root = PathBuf::from(format!("{d}:\\"));
+        if !root.exists() {
+            continue;
+        }
+        for sub in ["Torchlight Infinite", "Games\\Torchlight Infinite", "Program Files\\Torchlight Infinite", "Program Files (x86)\\Torchlight Infinite", "SteamLibrary\\steamapps\\common\\Torchlight Infinite", "Steam\\steamapps\\common\\Torchlight Infinite", "XDGames\\Torchlight Infinite"] {
+            candidates.push(LOG_IN_GAME.iter().fold(root.join(sub).join("Game"), |p, s| p.join(s)));
+        }
     }
     // a game under Program Files that can't write there has its log in Windows' VirtualStore copy
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
@@ -217,5 +262,18 @@ impl Settings {
     }
     pub fn save(&self) {
         let _ = std::fs::write(data_dir().join("settings.json"), serde_json::to_string_pretty(self).unwrap());
+    }
+}
+
+#[cfg(test)]
+mod log_tests {
+    use super::logs_above;
+    use std::path::Path;
+
+    /// The open game's program, wherever it's installed, gives its log's place.
+    #[test]
+    fn the_games_program_gives_its_logs_place() {
+        let logs = logs_above(Path::new("X:\\Games\\Torchlight Infinite\\Game\\UE_game\\Binaries\\Win64\\UE_game-Win64-Shipping.exe"));
+        assert!(logs.iter().any(|p| p == Path::new("X:\\Games\\Torchlight Infinite\\Game\\UE_game\\TorchLight\\Saved\\Logs\\UE_game.log")));
     }
 }

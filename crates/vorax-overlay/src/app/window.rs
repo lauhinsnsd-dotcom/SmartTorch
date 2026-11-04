@@ -425,9 +425,12 @@ fn log_card(s: &State, by_tray: bool) {
     let rows = if s.game_log == Some(GameLog::Missing) {
         vec![
             Row::Header { title: "找不到遊戲日誌".into(), status: "不會自動讀取畫面".into() },
-            Row::Text("工具會在遊戲的 Saved\\Logs 資料夾".into()),
-            Row::Text("尋找 UE_game.log。請先開啟遊戲，".into()),
-            Row::Text("或檢查 start-zh.bat 裡的遊戲路徑。".into()),
+            Row::Text("請先開啟遊戲：開啟後工具會從遊戲的".into()),
+            Row::Text("安裝位置自動找到 UE_game.log。".into()),
+            Row::Text("並確認遊戲中已開啟日誌（Esc →".into()),
+            Row::Text("「帳號相關」→「開啟日誌」，再重新登入）。".into()),
+            Row::Text("仍找不到時，用記事本在 start-zh.bat".into()),
+            Row::Text("第 5 行 GAMELOG= 後面填入日誌路徑。".into()),
             Row::Text("在此之前，可按 Ctrl+Alt+X 讀取畫面。".into()),
             Row::Buttons { primary: (MENU_LATER, "確定".into()), secondary: None },
         ]

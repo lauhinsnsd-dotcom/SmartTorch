@@ -74,7 +74,17 @@ jobs:
           Compress-Archive -Path vorax-zh\* -DestinationPath $zip
           $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           $exeHash = (Get-FileHash vorax-zh\vorax-overlay.exe -Algorithm SHA256).Hash.ToLower()
+          # this version's lines from CHANGELOG-zh.md first: the tray's update card shows them
+          $what = @()
+          $in = $false
+          foreach ($line in (Get-Content CHANGELOG-zh.md -Encoding utf8)) {
+            if ($line -match '^## ') { $in = ($line.Trim() -eq "## $tag"); continue }
+            if ($in -and $line.Trim() -ne '') { $what += $line }
+          }
+          $whatText = ($what -join "`n")
           $notes = @"
+          $whatText
+
           火炬之光：無限「渴癮症」輔助器中文版（非官方）。下載下方的 $zip，解壓縮後依照 README-zh.txt 使用。
           更新內容與兩種模式的比較請看專案首頁的 README。
 

@@ -8,8 +8,9 @@
 
 1. 到本專案的 [Releases](https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh/releases/latest) 下載壓縮檔並解壓縮（內含 `vorax-overlay.exe`、`start-zh.bat`、`start-zh-debug.bat` 與說明）。
 2. 遊戲中按 Esc →「帳號相關」→「開啟日誌」，然後登出再登入。
-3. 用記事本打開 `start-zh.bat`，把 `GAMELOG=` 後面改成你的遊戲路徑（`遊戲資料夾\Game\UE_game\TorchLight\Saved\Logs\UE_game.log`）。
-4. 點兩下 `start-zh.bat`，工具會在右下角系統匣執行。詳細說明見 `使用說明.txt`。
+3. 點兩下 `start-zh.bat`，工具會在右下角系統匣執行（Windows 11 可能收在「^」裡）。遊戲日誌會自動尋找，不必設定路徑。詳細說明見 `使用說明.txt`。
+
+若系統匣顯示「找不到遊戲日誌」：先開啟遊戲，工具會從遊戲的安裝位置找到日誌；仍找不到時，用記事本打開 `start-zh.bat`，在第 5 行 `GAMELOG=` 後面填入日誌路徑（`遊戲資料夾\Game\UE_game\TorchLight\Saved\Logs\UE_game.log`）。
 
 **更新**：從 v0.2.2-zh.2 起，有新版本時系統匣會提示，點「立即更新」即可（下載本專案的新版本並檢查 SHA-256，不會變回原作者的英文版）。v0.2.2-zh.1 的使用者請手動下載 v0.2.2-zh.2 一次；在 zh.1 看到「更新到 v…」的提示請不要點，那是原作者的英文版。
 
@@ -42,6 +43,10 @@
 | 低於 30 萬 | 1.7% | 3.8% |
 
 衝分模式拿到彩箱的機率較高（逐局比較，差異由運氣造成的機率約千分之一），平均分數也高很多；**代價是翻車時分數可能較低**：低於 50 萬的局由約 8% 增加到約 11%。這些是模擬結果，使用的是原作者國際服的卡牌資料；實戰表現請以「對局紀錄」的實戰統計為準。
+
+## 版本紀錄
+
+每個版本更新了什麼，請看 [CHANGELOG-zh.md](CHANGELOG-zh.md)（系統匣的更新提示也會顯示）。
 
 ## 中文版更新內容
 
