@@ -32,15 +32,35 @@ struct Board {
     score: i64,
 }
 
+/// The advice's mode a run was played in (not in upstream), from the log's "mode:" lines.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Mode {
+    /// a log from before the mode was written at every start
+    Unknown,
+    Safe,
+    Aggressive,
+    /// switched during the run
+    Mixed,
+}
+
 /// A run: the boards from a game's start to its screen closing.
 struct Run {
     at: f64,
     boards: Vec<Board>,
+    mode: Mode,
 }
 
 impl Run {
     fn last(&self) -> &Board {
         self.boards.last().unwrap()
+    }
+    /// Played to its protocols (rounds 11-13): its last board's score is how it ended (not in upstream).
+    fn finished(&self) -> bool {
+        self.last().round >= 11
+    }
+    /// The advice's first odds of 840k in the run, as the game began (not in upstream).
+    fn first_pct(&self) -> Option<u32> {
+        self.boards.iter().find_map(|b| b.pct)
     }
     /// The advice's odds over the run: (round, %) where they changed.
     fn odds(&self) -> Vec<(i64, u32)> {
@@ -86,12 +106,25 @@ fn zh_card(name: &str) -> String {
 fn parse(text: &str) -> Vec<Run> {
     let mut runs: Vec<Run> = Vec::new();
     let mut open = false;
+    // not in upstream: the mode the overlay advises in, from its "mode:" lines (unknown after a start without one)
+    let mut mode = Mode::Unknown;
     // the run reached the protocols: a board after them with no cards in hand is the game closing (older logs read
     // it as a board: six 1×1 monsters in "round 1")
     let mut protocols = false;
     for line in text.lines() {
         let Some((t, msg)) = line.split_once(' ') else { continue };
         let at: f64 = t.parse().unwrap_or(0.0);
+        if msg.starts_with("mode: aggressive") {
+            mode = Mode::Aggressive;
+            continue;
+        }
+        if msg.starts_with("mode: upstream") {
+            mode = Mode::Safe;
+            continue;
+        }
+        if msg.starts_with("Vorax overlay") && msg.contains("started") {
+            mode = Mode::Unknown;
+        }
         if msg.contains("Vorax screen closed") || msg.starts_with("Vorax overlay") {
             open = false;
             protocols = false;
@@ -145,14 +178,54 @@ fn parse(text: &str) -> Vec<Run> {
         let fresh = round <= 1;
         let new = runs.last().is_none_or(|r| round < r.last().round) || (!open && fresh);
         if new {
-            runs.push(Run { at, boards: Vec::new() });
+            runs.push(Run { at, boards: Vec::new(), mode });
             open = true;
         }
-        runs.last_mut().unwrap().boards.push(board);
+        let run = runs.last_mut().unwrap();
+        if run.mode != mode && run.mode != Mode::Mixed {
+            // a start without a mode line (an older version) keeps what the run was known to be played in
+            if mode != Mode::Unknown && run.mode != Mode::Unknown {
+                run.mode = Mode::Mixed;
+            } else if run.mode == Mode::Unknown {
+                run.mode = mode;
+            }
+        }
+        run.boards.push(board);
     }
     runs.retain(|r| !r.boards.is_empty());
     runs.reverse();
     runs
+}
+
+/// Not in upstream: each mode's finished runs against what the advice expected as they began, a line per mode
+/// ("保守：12 局 · 彩箱 8 局（67%）· 開局預計平均 61% · 平均 92 萬"), and once a mode has 20, how the runs in each band
+/// of first odds went. Runs not played to the protocols (closed early, read part way) aren't counted.
+fn summary(runs: &[Run]) -> Vec<String> {
+    let mut out = Vec::new();
+    for (mode, name) in [(Mode::Safe, "保守"), (Mode::Aggressive, "衝分"), (Mode::Unknown, "未記錄模式")] {
+        let done: Vec<&Run> = runs.iter().filter(|r| r.mode == mode && r.finished()).collect();
+        if done.is_empty() {
+            continue;
+        }
+        let n = done.len();
+        let won = done.iter().filter(|r| r.last().score >= 840_000).count();
+        let firsts: Vec<u32> = done.iter().filter_map(|r| r.first_pct()).collect();
+        let mean_first = if firsts.is_empty() { String::new() } else { format!(" · 開局預計平均 {:.0}%", firsts.iter().sum::<u32>() as f64 / firsts.len() as f64) };
+        let mean_score = done.iter().map(|r| r.last().score as f64).sum::<f64>() / n as f64;
+        out.push(format!("{name}：{n} 局 · 彩箱 {won} 局（{:.0}%）{mean_first} · 平均 {:.0} 萬", won as f64 / n as f64 * 100.0, mean_score / 10_000.0));
+        if n >= 20 && mode != Mode::Unknown {
+            let bands = [(0, 40, "<40%"), (40, 60, "40–60%"), (60, 80, "60–80%"), (80, 101, "≥80%")];
+            let parts: Vec<String> = bands
+                .iter()
+                .filter_map(|&(lo, hi, label)| {
+                    let these: Vec<&&Run> = done.iter().filter(|r| r.first_pct().is_some_and(|p| p >= lo && p < hi)).collect();
+                    (!these.is_empty()).then(|| format!("{label} {}/{}", these.iter().filter(|r| r.last().score >= 840_000).count(), these.len()))
+                })
+                .collect();
+            out.push(format!("　預計 → 實際彩箱：{}", parts.join(" · ")));
+        }
+    }
+    out
 }
 
 /// Local date and time of a log time (seconds since 1970), and the day as a number for "today".
@@ -252,6 +325,8 @@ enum Hit {
 
 #[derive(Clone, Copy)]
 enum Item {
+    /// not in upstream: the modes' totals, first
+    Summary,
     Run(usize),
     Board(usize, usize),
 }
@@ -267,6 +342,8 @@ struct View {
     drag: Option<Drag>,
     h: f32,
     runs: Vec<Run>,
+    /// not in upstream: summary(runs)
+    totals: Vec<String>,
     open: Vec<bool>,
     scroll: f32,
     hover: Option<Hit>,
@@ -280,6 +357,11 @@ impl View {
     fn items(&self) -> Vec<(Item, f32, f32)> {
         let mut y = 0.0;
         let mut out = Vec::new();
+        if !self.totals.is_empty() {
+            let h = 30.0 + 18.0 * self.totals.len() as f32;
+            out.push((Item::Summary, y, h));
+            y += h + 8.0;
+        }
         for (i, r) in self.runs.iter().enumerate() {
             out.push((Item::Run(i), y, RUN_H));
             y += RUN_H + 6.0;
@@ -335,6 +417,7 @@ impl View {
         }
         let ly = cy - HEAD + self.scroll;
         self.items().into_iter().find(|(_, t, h)| ly >= *t && ly < t + h).and_then(|(it, _, _)| match it {
+            Item::Summary => None,
             Item::Run(i) => Some(Hit::Run(i)),
             Item::Board(i, _) => Some(Hit::Run(i)),
         })
@@ -407,6 +490,15 @@ fn render(v: &View) -> Pixmap {
             continue;
         }
         match it {
+            Item::Summary => {
+                if let Some(p) = rounded(12.0 * s, y0, lw - 24.0 * s, height * s, 10.0 * s) {
+                    list.fill_path(&p, &paint(rgba(GOLD.0, GOLD.1, GOLD.2, 0.07)), FillRule::Winding, Transform::identity(), None);
+                }
+                text(&mut list, &v.fonts.bold, "實戰統計（只計打到最後的局，最終活性 840k 以上算彩箱）", 12.5 * s, 28.0 * s, y0 + 21.0 * s, GOLD, 1.0);
+                for (k, line) in v.totals.iter().enumerate() {
+                    text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, line, 12.5 * s, lw - 56.0 * s), 12.5 * s, 28.0 * s, y0 + (40.0 + 18.0 * k as f32) * s, soft, 1.0);
+                }
+            }
             Item::Run(i) => {
                 let r = &v.runs[i];
                 let last = r.last();
@@ -549,7 +641,8 @@ pub fn open(fonts: Rc<Fonts>) {
         if let Some(o) = open.first_mut() {
             *o = true;
         }
-        let v = View { hwnd: HWND::default(), fonts, s, w: w0, dpi, zoom, drag: None, h, runs, open, scroll: 0.0, hover: None };
+        let totals = summary(&runs);
+        let v = View { hwnd: HWND::default(), fonts, s, w: w0, dpi, zoom, drag: None, h, runs, totals, open, scroll: 0.0, hover: None };
         let pm = render(&v);
         let (w, hh) = (pm.width() as i32, pm.height() as i32);
         let x = work.left + ((work.right - work.left) - w) / 2;
@@ -715,7 +808,8 @@ pub fn preview(log: &str, fonts: Rc<Fonts>, s: f32, h: f32) -> Pixmap {
     if let Some(o) = open.first_mut() {
         *o = true;
     }
-    render(&View { hwnd: HWND::default(), fonts, s, w: W, dpi: s, zoom: 1.0, drag: None, h, runs, open, scroll: 0.0, hover: None })
+    let totals = summary(&runs);
+    render(&View { hwnd: HWND::default(), fonts, s, w: W, dpi: s, zoom: 1.0, drag: None, h, runs, totals, open, scroll: 0.0, hover: None })
 }
 
 #[cfg(test)]
@@ -801,5 +895,48 @@ mod protocol_round_tests {
         assert_eq!((b.advice.as_str(), b.pct), ("細肢藥粉-蠱蟲  →  第 3 格", Some(64)));
         assert_eq!(b.instruments, vec!["人蛹標本".to_string()]);
         assert_eq!(b.tanks, "稀有骨 15×12");
+    }
+}
+
+#[cfg(test)]
+mod summary_tests {
+    use super::{parse, summary, Mode};
+
+    fn board(t: u32, round: u32, phase: &str, pct: u32, score: (u32, u32)) -> String {
+        let m = format!(r#"{{"archetype":"agito","rarity":"normal","activity":{},"quantity":{}}}"#, score.0, score.1);
+        format!(r#"{t}.0 board 1920x1080: picture 400 ms, read 300 ms, advice 1 ms → Xeno-Hormone · {pct}% 達 840k; board {{"tanks":[{m},null,null,null,null,null],"hand":["Xeno-Hormone"],"instruments":[],"phase":"{phase}","round":{round}}}"#)
+    }
+
+    /// Each mode's finished runs are counted against their first odds; an older log's are counted apart.
+    #[test]
+    fn each_modes_runs_are_counted_against_what_was_expected() {
+        let log = [
+            "1.0 Vorax overlay v0.2.2 started (Intern Shelley level 6, odds of 2026-10-22)".to_string(),
+            board(2, 1, "potion", 60, (1, 36)),
+            board(3, 11, "protocol", 70, (1000, 900)),
+            "4.0 the game's Vorax screen closed".to_string(),
+            "5.0 Vorax overlay v0.2.2 started (Intern Shelley level 6, odds of 2026-10-22)".to_string(),
+            "5.1 mode: upstream's (保守), futures counted up to 840k".to_string(),
+            board(6, 1, "potion", 50, (1, 36)),
+            board(7, 13, "protocol", 40, (500, 900)),
+            "8.0 the game's Vorax screen closed".to_string(),
+            "8.5 mode: aggressive (衝分), futures judged by their plain final score".to_string(),
+            board(9, 1, "potion", 70, (1, 36)),
+            board(10, 12, "protocol", 90, (1000, 1000)),
+            "11.0 the game's Vorax screen closed".to_string(),
+            board(12, 1, "potion", 65, (1, 36)),
+            board(13, 5, "potion", 65, (100, 100)),
+        ]
+        .join("\n");
+        let runs = parse(&log);
+        assert_eq!(runs.iter().map(|r| r.mode).collect::<Vec<_>>(), vec![Mode::Aggressive, Mode::Aggressive, Mode::Safe, Mode::Unknown]);
+        assert_eq!(
+            summary(&runs),
+            vec![
+                "保守：1 局 · 彩箱 0 局（0%） · 開局預計平均 50% · 平均 45 萬".to_string(),
+                "衝分：1 局 · 彩箱 1 局（100%） · 開局預計平均 70% · 平均 100 萬".to_string(),
+                "未記錄模式：1 局 · 彩箱 1 局（100%） · 開局預計平均 60% · 平均 90 萬".to_string(),
+            ]
+        );
     }
 }

@@ -159,9 +159,8 @@ pub fn run(args: &[String]) {
     sys::note(&format!("Vorax overlay v{} started (Intern Shelley level {}, odds of {})", update::current(), settings.shelley, vorax::data().odds));
     crate::zh::set_mode(settings.script);
     vorax::bot::MEAN_GOAL.store(settings.aggressive, std::sync::atomic::Ordering::Relaxed);
-    if settings.aggressive {
-        sys::note("mode: aggressive (衝分), futures judged by their plain final score");
-    }
+    // the mode every start (not only the aggressive one), so the runs window can count each mode's games
+    sys::note(if settings.aggressive { "mode: aggressive (衝分), futures judged by their plain final score" } else { "mode: upstream's (保守), futures counted up to 840k" });
     let Some(fonts) = crate::draw::Fonts::system() else {
         sys::note("no Segoe UI or Arial font found");
         return;
