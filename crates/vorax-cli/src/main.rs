@@ -1,7 +1,7 @@
 //! vorax: the Rust Vorax advisor and simulator from the command line. Read-only: it prints advice, it never
 //! touches the game.
 //!
-//!   vorax advise [screen.json] [--futures N] [--quick] [--single]   advice for a screen (stdin when no file)
+//!   vorax advise [screen.json] [--futures N] [--quick] [--single] [--mean]   advice for a screen (stdin when no file)
 //!   vorax bench [fixtures-dir]                                      advice timings against the TypeScript's
 //!   vorax sim [--games N] [--seed0 S] [--policy value|steer|solver] [--mean] whole games, score stats (--mean: aggressive mode)
 //!   vorax read <screenshot.png> [--advise]                          read a screenshot of the game (and advise on it)
@@ -84,6 +84,8 @@ fn advise(args: &[String]) {
     }
     let screen: ScreenState = serde_json::from_str(&text).unwrap_or_else(|e| fail(&format!("screen: {e}")));
     let par = !args.iter().any(|a| a == "--single");
+    // --mean: the aggressive mode (not in upstream), as the overlay's 衝分
+    MEAN_GOAL.store(args.iter().any(|a| a == "--mean"), std::sync::atomic::Ordering::Relaxed);
     let advice = if args.iter().any(|a| a == "--quick") {
         advisor::advise(&screen, arg(args, "--samples").unwrap_or(16), false, par)
     } else {
