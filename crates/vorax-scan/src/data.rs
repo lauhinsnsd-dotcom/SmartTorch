@@ -44,6 +44,9 @@ pub struct ScanData {
     pub digits: IndexMap<String, IndexMap<String, Vec<Vec<f64>>>>,
     /// card art by "phase:name", centred for comparing
     pub cards: IndexMap<String, Vec<Art>>,
+    /// not in upstream: card art from Chinese client frames for cards `cards` has none of (cards_zh.json), read
+    /// only by a Chinese client's art-only matching
+    pub cards_zh: IndexMap<String, Vec<Art>>,
     /// card text-block shapes by "phase:name"
     pub texts: IndexMap<String, Vec<Vec<f64>>>,
     /// header text shape for each phase
@@ -90,6 +93,7 @@ impl ScanData {
             names: serde_json::from_str(names).map_err(|e| format!("names.json: {e}"))?,
             names_zh: NamesZh::default(),
             digits_zh: IndexMap::new(),
+            cards_zh: IndexMap::new(),
         })
     }
 
@@ -119,6 +123,17 @@ impl ScanData {
         refs
     }
 
+    /// With card art from Chinese client frames (cards_zh.json): only for cards `cards` has none of.
+    pub fn with_cards_zh(mut self, cards_zh: &str) -> Result<ScanData, String> {
+        #[derive(Deserialize)]
+        struct Packed {
+            cards: IndexMap<String, Vec<ArtFeature>>,
+        }
+        let p: Packed = serde_json::from_str(cards_zh).map_err(|e| format!("cards_zh.json: {e}"))?;
+        self.cards_zh = p.cards.into_iter().filter(|(k, _)| !self.cards.contains_key(k)).map(|(k, fs)| (k, fs.iter().map(Art::from).collect())).collect();
+        Ok(self)
+    }
+
     /// With the cards' Chinese names (names_zh.json).
     pub fn with_names_zh(mut self, names_zh: &str) -> Result<ScanData, String> {
         self.names_zh = serde_json::from_str(names_zh).map_err(|e| format!("names_zh.json: {e}"))?;
@@ -133,7 +148,8 @@ impl ScanData {
             include_str!("../../../data/scan/names.json"),
         )?
         .with_names_zh(include_str!("../../../data/scan/names_zh.json"))?
-        .with_digits_zh(include_str!("../../../data/scan/digits_zh.json"))
+        .with_digits_zh(include_str!("../../../data/scan/digits_zh.json"))?
+        .with_cards_zh(include_str!("../../../data/scan/cards_zh.json"))
     }
 
 }

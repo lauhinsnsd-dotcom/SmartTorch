@@ -125,3 +125,12 @@ fn the_simplified_clients_dash_read_as_a_character_is_left_out() {
     // still not to be guessed: the family not read
     assert_eq!(han_pick(data, "potion", "孪 生 激 素 一").as_deref(), None);
 }
+
+#[test]
+fn the_chinese_clients_card_pictures_are_only_for_cards_upstream_has_none_of() {
+    let data = scan_data();
+    for key in ["instrument:Egg-Burdened Butterfly", "instrument:Aberrant Stinger"] {
+        assert!(data.cards_zh.contains_key(key), "{key}");
+    }
+    assert!(data.cards_zh.keys().all(|k| !data.cards.contains_key(k)));
+}

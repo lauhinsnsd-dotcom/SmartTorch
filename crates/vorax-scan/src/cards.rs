@@ -121,9 +121,12 @@ fn rank(img: &Img, c: &CardPos, k: f64, prefix: &str, data: &ScanData, art_only:
         None => a,
     };
     let sh = shifts();
+    // not in upstream: a Chinese client's art-only matching also has the cards upstream has no picture of
+    let zh = data.cards_zh.iter().filter(|_| art_only);
     let mut scored: Vec<Scored> = data
         .cards
         .iter()
+        .chain(zh)
         .filter(|(key, _)| key.starts_with(prefix))
         .map(|(key, fs)| {
             let texts = data.texts.get(key).filter(|_| !art_only);
