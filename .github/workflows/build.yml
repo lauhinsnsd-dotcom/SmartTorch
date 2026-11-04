@@ -26,6 +26,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # a release's exe knows its version (the tag's), and is offered only newer releases
+      - name: Version (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          "VORAX_VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Tests
         env:
           # the tests don't need the release build's link-time optimisation; it only makes them slower to build
@@ -82,9 +90,9 @@ jobs:
           # gets a release of its own
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $zip --clobber
+            gh release upload $tag $zip vorax-zh\vorax-overlay.exe --clobber
             gh release edit $tag --notes-file notes.md
           } else {
-            gh release create $tag $zip --title "$tag" --notes-file notes.md
+            gh release create $tag $zip vorax-zh\vorax-overlay.exe --title "$tag" --notes-file notes.md
           }
           exit $LASTEXITCODE

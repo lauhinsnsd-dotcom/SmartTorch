@@ -1,4 +1,5 @@
-//! Updating the overlay from this project's GitHub releases: at start it asks for the latest release, and when it's
+//! Updating the overlay from this project's GitHub releases (not in upstream: the Chinese edition's own,
+//! lauhinsnsd-dotcom/vorax-solver-rs-zh, versions v0.2.2-zh.1 and on): at start it asks for the latest release, and when it's
 //! newer the tray menu offers it with its notes. The new overlay.exe is downloaded next to this one, checked against
 //! the SHA-256 GitHub gives for it, and swapped in: a running exe can't be overwritten but can be renamed, so this
 //! one moves aside (deleted on the next start) and the new one starts in its place.
@@ -11,13 +12,14 @@ use windows::Foundation::{AsyncOperationProgressHandler, Uri};
 use windows::Storage::Streams::DataReader;
 use windows::Web::Http::{HttpClient, HttpProgress};
 
-pub const REPO: &str = "DinoRaos/vorax-solver-rs";
+pub const REPO: &str = "lauhinsnsd-dotcom/vorax-solver-rs-zh";
 /// The asset of a release that is the overlay.
 const ASSET: &str = "vorax-overlay.exe";
 
-/// This build's version. A test build can claim an older one (VORAX_VERSION at build time) to be offered an update.
+/// This build's version. A release's build is given its tag's (VORAX_VERSION at build time, "0.2.2-zh.1"); others
+/// are upstream's (0.2.2), offered any release of the Chinese edition. A test build can claim an older one.
 pub fn current() -> &'static str {
-    option_env!("VORAX_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+    option_env!("VORAX_VERSION").map(|v| v.trim_start_matches('v')).filter(|v| !v.is_empty()).unwrap_or(env!("CARGO_PKG_VERSION"))
 }
 
 #[derive(Clone, Debug)]
@@ -31,9 +33,16 @@ pub struct Release {
     sha256: String,
 }
 
-fn version_of(s: &str) -> Option<(u32, u32, u32)> {
-    let mut it = s.trim().trim_start_matches('v').split('.').map(|p| p.parse::<u32>().ok());
-    Some((it.next()??, it.next()??, it.next().flatten().unwrap_or(0)))
+/// A version as numbers to compare: upstream's three, then the Chinese edition's number ("0.2.2-zh.3": 0, 2, 2, 3;
+/// "0.2.2": 0, 2, 2, 0).
+fn version_of(s: &str) -> Option<(u32, u32, u32, u32)> {
+    let s = s.trim().trim_start_matches('v');
+    let (base, zh) = match s.split_once("-zh.") {
+        Some((b, z)) => (b, z.parse::<u32>().ok()?),
+        None => (s, 0),
+    };
+    let mut it = base.split('.').map(|p| p.parse::<u32>().ok());
+    Some((it.next()??, it.next()??, it.next().flatten().unwrap_or(0), zh))
 }
 
 fn client() -> Result<HttpClient, String> {
@@ -49,7 +58,7 @@ fn plain_notes(body: &str) -> String {
     let mut out = Vec::new();
     for line in body.lines() {
         let l = line.trim();
-        if l.starts_with("Download `") || l.starts_with("Built from") || l.starts_with("| File") {
+        if l.starts_with("Download `") || l.starts_with("Built from") || l.starts_with("| File") || l.starts_with("SHA-256") || l.starts_with("第一次執行") {
             break;
         }
         if l.starts_with('>') {
@@ -141,5 +150,19 @@ pub fn clean_up() {
     if let Ok(exe) = std::env::current_exe() {
         let _ = std::fs::remove_file(aside(&exe, ".old"));
         let _ = std::fs::remove_file(aside(&exe, ".new"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::version_of;
+
+    #[test]
+    fn the_chinese_editions_number_counts_after_upstreams() {
+        assert!(version_of("v0.2.2-zh.2") > version_of("0.2.2-zh.1"));
+        assert!(version_of("v0.2.2-zh.10") > version_of("v0.2.2-zh.9"));
+        assert!(version_of("v0.2.2-zh.1") > version_of("0.2.2"));
+        assert!(version_of("v0.2.3-zh.1") > version_of("0.2.2-zh.5"));
+        assert_eq!(version_of("v0.2.2-zh.x"), None);
     }
 }

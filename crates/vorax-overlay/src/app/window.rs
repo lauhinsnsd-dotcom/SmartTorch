@@ -383,7 +383,7 @@ fn tray_menu(hwnd: HWND) {
         if let Some(r) = &s.update {
             let label = match s.updating {
                 Some(p) => format!("正在更新到 v{}… {:.0}%", r.version, p * 100.0),
-                None => format!("更新到 v{}（原作者英文版）", r.version),
+                None => format!("更新到 v{}", r.version),
             };
             rows.push(Row::Action { id: MENU_UPDATE, label, shortcut: "更新內容".into() });
         }
@@ -454,7 +454,7 @@ fn update_offer(s: &State) {
     let Some(r) = &s.update else { return };
     note(&format!("update available: v{} (this is v{})", r.version, update::current()));
     let rows = vec![
-        Row::Header { title: "原作者有新版本".into(), status: format!("v{} 已推出 · 你目前是 v{}", r.version, update::current()) },
+        Row::Header { title: "中文版有新版本".into(), status: format!("v{} 已推出 · 你目前是 v{}", r.version, update::current()) },
         Row::Buttons { primary: (MENU_UPDATE, "更新內容".into()), secondary: Some((MENU_LATER, "稍後".into())) },
     ];
     super::menu::notify(s.hwnd, rows, s.fonts.clone());
@@ -467,12 +467,10 @@ fn whats_new(s: &State) {
         return super::menu::open(s.hwnd, download_rows(s), s.fonts.clone());
     }
     let rows = vec![
-        Row::Header { title: format!("v{} 更新內容（英文）", r.version), status: format!("你目前是 v{}", update::current()) },
+        Row::Header { title: format!("v{} 更新內容", r.version), status: format!("你目前是 v{}", update::current()) },
         Row::Lines(wrap(&s.fonts, &r.notes, 18)),
         Row::Action { id: MENU_RELEASE_PAGE, label: "GitHub 上的版本頁面".into(), shortcut: "開啟".into() },
-        Row::Warn("注意：更新會換成原作者的英文版，".into()),
-        Row::Warn("中文支援會消失。".into()),
-        Row::Buttons { primary: (MENU_UPDATE_NOW, "仍要更新".into()), secondary: Some((MENU_LATER, "稍後".into())) },
+        Row::Buttons { primary: (MENU_UPDATE_NOW, "立即更新".into()), secondary: Some((MENU_LATER, "稍後".into())) },
     ];
     super::menu::open(s.hwnd, rows, s.fonts.clone());
 }

@@ -1,0 +1,61 @@
+name: 問題回報
+description: 讀錯畫面、建議怪怪的、程式出錯
+title: "[問題] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感謝回報！請盡量附上記錄檔，沒有記錄檔通常很難找出原因。
+        記錄檔位置：在檔案總管的網址列輸入 `%APPDATA%\VoraxRs` 後按 Enter，裡面的 `overlay.log`（有 `overlay.log.old` 也一起附上）。
+  - type: textarea
+    id: what
+    attributes:
+      label: 發生了什麼
+      description: 例如「第 3 格讀成 4x474，遊戲是 1x171」、「有刷新次數卻沒有建議刷新」。可以直接貼截圖。
+    validations:
+      required: true
+  - type: input
+    id: when
+    attributes:
+      label: 大約什麼時候、第幾回合
+      placeholder: 例如：今天 20:15 那一局，第 4 回合
+  - type: dropdown
+    id: resolution
+    attributes:
+      label: 遊戲解析度
+      options:
+        - 2560×1440
+        - 3840×2160
+        - 1920×1080
+        - 其他（請在下面說明）
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: 遊戲客戶端
+      options:
+        - 繁體中文
+        - 簡體中文
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 工具模式（系統匣「模式」）
+      options:
+        - 保守
+        - 衝分
+  - type: input
+    id: version
+    attributes:
+      label: 工具版本（系統匣選單最上方，例如 v0.2.2-zh.1）
+  - type: textarea
+    id: files
+    attributes:
+      label: 記錄檔與畫面
+      description: |
+        把 overlay.log 拖曳到這裡。
+        如果是用 start-zh-debug.bat 開啟，frames 資料夾裡檔名有 reread 或 manual 的圖片最有用，壓縮成 zip 再拖進來（不必全部附上）。
+    validations:
+      required: true
