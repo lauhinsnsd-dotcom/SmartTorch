@@ -31,6 +31,9 @@ pub struct Plan {
     pub button: Option<Rect>,
     /// the glass of each tank to target
     pub tanks: Vec<Rect>,
+    /// not in upstream: what was read, a line for the cards and one for the tanks, for the player to check against
+    /// the game (Ctrl+Alt+D hides it)
+    pub read: Vec<String>,
 }
 
 impl Plan {
@@ -63,22 +66,150 @@ fn slots(reading: &Reading, size: usize) -> Vec<usize> {
     (0..size).filter(|j| !unknown.contains(j)).collect()
 }
 
-/// The marks for this advice on this board. `l`: the layout of the screen the overlay covers.
-pub fn plan_for(advice: &Advice, screen: &ScreenState, reading: &Reading, l: &Layout) -> Plan {
+/// The hint's words for a Chinese client (not in upstream). The font is cut to these and the cards' Chinese names
+/// (dev/make_font_zh.py), so a word added here needs the font made again (a test says so).
+const ZH_REROLL: &str = "刷新";
+const ZH_ALWAYS: &str = "出現就選";
+const ZH_REACH: &str = "達";
+const ZH_TANK: &str = "第 {} 格";
+const ZH_CARD: &str = "第 {} 張卡";
+const ZH_NOT_READ: &str = "未讀到：";
+const ZH_NOT_FULLY: &str = "畫面未完全讀到";
+const ZH_NOT_IN_DATA: &str = "不在資料內，請自行判斷";
+const ZH_READ_CARDS: &str = "卡：";
+const ZH_READ_TANKS: &str = "槽：";
+const ZH_EMPTY: &str = "空";
+const ZH_UNKNOWN: &str = "？";
+const ZH_SEP: &str = "｜";
+const ZH_NORMAL: &str = "普通";
+const ZH_MAGIC: &str = "魔法";
+const ZH_RARE: &str = "稀有";
+const ZH_BOSS: &str = "首領";
+const ZH_PEST: &str = "蠱蟲";
+const ZH_AEMBERON: &str = "異魔";
+const ZH_BONE_SENTRY: &str = "骨衛兵";
+const ZH_AGITO: &str = "覺醒者";
+#[cfg(test)]
+const ZH_ALL: [&str; 22] = [
+    ZH_REROLL, ZH_ALWAYS, ZH_REACH, ZH_TANK, ZH_CARD, ZH_NOT_READ, ZH_NOT_FULLY, ZH_NOT_IN_DATA, ZH_READ_CARDS, ZH_READ_TANKS, ZH_EMPTY,
+    ZH_UNKNOWN, ZH_SEP, ZH_NORMAL, ZH_MAGIC, ZH_RARE, ZH_BOSS, ZH_PEST, ZH_AEMBERON, ZH_BONE_SENTRY, ZH_AGITO, "×",
+];
+
+/// A monster as the read line shows it: "稀有骨衛兵 15×12" ("rare Bone Sentry 15×12").
+fn monster_text(m: &vorax::advisor::ScreenMonster, zh: bool) -> String {
+    use vorax::types::{Archetype, Rarity};
+    let (r, a) = match (m.rarity, m.archetype, zh) {
+        (r, a, true) => (
+            match r {
+                Rarity::Normal => ZH_NORMAL,
+                Rarity::Magic => ZH_MAGIC,
+                Rarity::Rare => ZH_RARE,
+                Rarity::Boss => ZH_BOSS,
+            },
+            match a {
+                Archetype::Pest => ZH_PEST,
+                Archetype::Aemberon => ZH_AEMBERON,
+                Archetype::BoneSentry => ZH_BONE_SENTRY,
+                Archetype::Agito => ZH_AGITO,
+            },
+        ),
+        (r, a, false) => (
+            match r {
+                Rarity::Normal => "normal ",
+                Rarity::Magic => "magic ",
+                Rarity::Rare => "rare ",
+                Rarity::Boss => "boss ",
+            },
+            match a {
+                Archetype::Pest => "Pest",
+                Archetype::Aemberon => "Aemberon",
+                Archetype::BoneSentry => "Bone Sentry",
+                Archetype::Agito => "Agito",
+            },
+        ),
+    };
+    format!("{r}{a} {}×{}", m.activity, m.quantity)
+}
+
+/// What was read, as two lines: the cards in hand from the left ("?" for one not read) and the six tanks.
+fn read_lines(screen: &ScreenState, size: usize, at: &[usize], missed: &Missed, zh: bool) -> Vec<String> {
+    let unknown = if zh { ZH_UNKNOWN } else { "?" };
+    let sep = if zh { ZH_SEP } else { " | " };
+    let mut cards: Vec<String> = vec![unknown.to_string(); size];
+    for (k, &slot) in at.iter().enumerate() {
+        if let (Some(name), Some(c)) = (screen.hand.get(k), cards.get_mut(slot)) {
+            *c = if zh { zh_name(screen.phase, name) } else { name.clone() };
+        }
+    }
+    for (j, name) in &missed.unsupported {
+        if let Some(c) = cards.get_mut(*j) {
+            *c = name.clone();
+        }
+    }
+    let tanks: Vec<String> = (0..6)
+        .map(|i| {
+            if missed.tanks.contains(&i) {
+                unknown.to_string()
+            } else {
+                match screen.tanks.get(i).and_then(|t| t.as_ref()) {
+                    Some(m) => monster_text(m, zh),
+                    None if zh => ZH_EMPTY.to_string(),
+                    None => "empty".to_string(),
+                }
+            }
+        })
+        .collect();
+    let numbered = |v: &[String]| v.iter().enumerate().map(|(i, t)| format!("{} {t}", i + 1)).collect::<Vec<_>>().join(sep);
+    let mut lines = Vec::new();
+    if size > 0 {
+        lines.push(format!("{}{}", if zh { ZH_READ_CARDS } else { "cards: " }, numbered(&cards)));
+    }
+    lines.push(format!("{}{}", if zh { ZH_READ_TANKS } else { "tanks: " }, numbered(&tanks)));
+    lines
+}
+
+fn pct_in(x: f64, zh: bool) -> String {
+    if zh {
+        format!("{:.0}% {ZH_REACH} {}k", x * 100.0, vorax::value::TARGET / 1000)
+    } else {
+        pct(x)
+    }
+}
+
+/// A card's name as a Chinese client prints it (the first of its forms in names_zh.json), else as the data has it.
+fn zh_name(phase: ScreenPhase, name: &str) -> String {
+    let z = &vorax_scan::scan_data().names_zh;
+    let names = match phase {
+        ScreenPhase::Potion => &z.potion,
+        ScreenPhase::Instrument => &z.instrument,
+        ScreenPhase::Protocol => &z.protocol,
+    };
+    names.get(name).and_then(|f| f.first()).cloned().unwrap_or_else(|| name.to_string())
+}
+
+/// The marks for this advice on this board. `l`: the layout of the screen the overlay covers. `zh`: the hint in
+/// Chinese, with the cards' Chinese names (a Chinese client; not in upstream).
+pub fn plan_for(advice: &Advice, screen: &ScreenState, reading: &Reading, l: &Layout, zh: bool) -> Plan {
     let mut plan = Plan::default();
     let size = reading.hand_ranks.as_ref().map(|r| r.len()).filter(|&n| n > 0).or(reading.hand_size).unwrap_or(3);
     let at = slots(reading, size);
     let pos = l.hand_at(size);
+    let tank = |t: i32| if zh { ZH_TANK.replace("{}", &(t + 1).to_string()) } else { format!("tank {}", t + 1) };
     match &advice.best {
         Best::Nothing => {}
         Best::Refresh => {
             let r = l.refresh;
             plan.button = Some(Rect::new(r.x - 0.35 * r.w, r.y - 0.45 * r.h, r.w * 1.7, r.h * 1.9));
-            let sub = advice.refresh_end.map(|e| pct(e.reached)).unwrap_or_default();
-            plan.pill = Some(Pill { main: "Reroll".into(), sub, dim: false });
+            let sub = advice.refresh_end.map(|e| pct_in(e.reached, zh)).unwrap_or_default();
+            plan.pill = Some(Pill { main: if zh { ZH_REROLL.into() } else { "Reroll".into() }, sub, dim: false });
         }
         Best::Card(r) => {
-            let name = screen.hand.get(r.index).cloned().unwrap_or_else(|| format!("Card {}", r.index + 1));
+            let name = match screen.hand.get(r.index) {
+                Some(n) if zh => zh_name(screen.phase, n),
+                Some(n) => n.clone(),
+                None if zh => ZH_CARD.replace("{}", &(r.index + 1).to_string()),
+                None => format!("Card {}", r.index + 1),
+            };
             if let Some(&slot) = at.get(r.index) {
                 if let Some(c) = pos.get(slot) {
                     plan.card = Some((*c, CARD_W * l.k, CARD_H * l.k));
@@ -87,27 +218,104 @@ pub fn plan_for(advice: &Advice, screen: &ScreenState, reading: &Reading, l: &La
             plan.tanks.extend(r.targets.iter().filter(|&&t| t < 6).map(|&t| l.tank_glass[t as usize]));
             let main = match r.targets.as_slice() {
                 [] => name,
-                [a] => format!("{name}  →  tank {}", a + 1),
+                [a] => format!("{name}  →  {}", tank(*a as i32)),
+                ts if zh => format!("{name}  →  {}", ZH_TANK.replace("{}", &ts.iter().map(|t| (t + 1).to_string()).collect::<Vec<_>>().join(" + "))),
                 ts => format!("{name}  →  tanks {}", ts.iter().map(|t| (t + 1).to_string()).collect::<Vec<_>>().join(" + ")),
             };
             let sub = match (&advice.note, r.end) {
+                (Some(_), _) if zh => ZH_ALWAYS.into(),
                 (Some(_), _) => "always take it".into(),
-                (None, Some(e)) => pct(e.reached),
+                (None, Some(e)) => pct_in(e.reached, zh),
                 (None, None) => String::new(),
             };
             plan.pill = Some(Pill { main, sub, dim: false });
         }
     }
+    // not in upstream: what the reader couldn't make out, so the player knows to check it (read again by itself
+    // a second later, up to twice; Ctrl+Alt+X reads again after that), and a card the data doesn't have (the advice
+    // leaves it out: the player decides)
+    let missed = not_read(reading);
+    let mut notes: Vec<String> = Vec::new();
+    for (j, name) in &missed.unsupported {
+        notes.push(if zh { format!("{}「{name}」{ZH_NOT_IN_DATA}", ZH_CARD.replace("{}", &(j + 1).to_string())) } else { format!("card {} ({name}) not in the data: your call", j + 1) });
+    }
+    if !missed.is_empty() {
+        let mut what: Vec<String> = Vec::new();
+        what.extend(missed.cards.iter().map(|j| if zh { ZH_CARD.replace("{}", &(j + 1).to_string()) } else { format!("card {}", j + 1) }));
+        what.extend(missed.tanks.iter().map(|i| tank(*i as i32)));
+        notes.push(if zh { format!("{ZH_NOT_READ}{}（Ctrl+Alt+X）", what.join("、")) } else { format!("not read: {} (Ctrl+Alt+X)", what.join(", ")) });
+    }
+    if !notes.is_empty() {
+        let warn = notes.join(" · ");
+        match &mut plan.pill {
+            Some(p) => p.sub = if p.sub.is_empty() { warn } else { format!("{} · {warn}", p.sub) },
+            None => plan.pill = Some(Pill { main: if zh { ZH_NOT_FULLY.into() } else { "Board not fully read".into() }, sub: warn, dim: false }),
+        }
+    }
+    plan.read = read_lines(screen, size, &at, &missed, zh);
     if screen.phase == ScreenPhase::Protocol {
         plan = Plan::default();
     }
     plan
 }
 
+/// What the reader couldn't make out on a board, as the player counts them (from 0): cards and tanks not read, and
+/// cards read as one upstream's data doesn't have (names_zh.json "unsupported"), with the name as printed.
+#[derive(Debug, Default)]
+pub struct Missed {
+    pub cards: Vec<usize>,
+    pub tanks: Vec<usize>,
+    pub unsupported: Vec<(usize, String)>,
+}
+
+impl Missed {
+    /// Nothing that reading again could make out (a card not in the data stays so).
+    pub fn is_empty(&self) -> bool {
+        self.cards.is_empty() && self.tanks.is_empty()
+    }
+}
+
+pub fn not_read(reading: &Reading) -> Missed {
+    let mut m = Missed::default();
+    for p in &reading.problems {
+        match p {
+            Problem::UnknownArt { field, text, .. } => {
+                if let Some(j) = field.strip_prefix("hand").and_then(|j| j.parse::<usize>().ok()) {
+                    match text.as_deref().and_then(|t| vorax_scan::titles::han_unsupported(vorax_scan::scan_data(), t)) {
+                        Some(name) if !m.unsupported.iter().any(|(k, _)| *k == j) => m.unsupported.push((j, name)),
+                        Some(_) => {}
+                        None if !m.cards.contains(&j) => m.cards.push(j),
+                        None => {}
+                    }
+                }
+            }
+            Problem::Unreadable { field } => {
+                if let Some(i) = field.strip_prefix("tank").and_then(|r| r.split('.').next()).and_then(|i| i.parse::<usize>().ok()) {
+                    if !m.tanks.contains(&i) {
+                        m.tanks.push(i);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    m.cards.sort_unstable();
+    m.tanks.sort_unstable();
+    m.unsupported.sort();
+    m
+}
+
 pub struct Fonts {
     pub bold: fontdue::Font,
     pub regular: fontdue::Font,
+    /// not in upstream: for a hint in Chinese, which Windows' Segoe UI doesn't have (a subset of Noto Sans TC, SIL
+    /// OFL 1.1, built into the program: data/fonts)
+    pub zh_bold: Option<fontdue::Font>,
+    pub zh_regular: Option<fontdue::Font>,
 }
+
+static ZH_BOLD: &[u8] = include_bytes!("../../../data/fonts/zh-bold.ttf");
+static ZH_REGULAR: &[u8] = include_bytes!("../../../data/fonts/zh-regular.ttf");
 
 impl Fonts {
     /// Segoe UI from Windows (Arial where it's missing).
@@ -116,7 +324,17 @@ impl Fonts {
         let load = |names: &[&str]| {
             names.iter().find_map(|n| std::fs::read(format!("{dir}\\{n}")).ok()).and_then(|b| fontdue::Font::from_bytes(b, fontdue::FontSettings::default()).ok())
         };
-        Some(Fonts { bold: load(&["segoeuib.ttf", "arialbd.ttf"])?, regular: load(&["segoeui.ttf", "arial.ttf"])? })
+        let zh = |b: &[u8]| fontdue::Font::from_bytes(b, fontdue::FontSettings::default()).ok();
+        Some(Fonts { bold: load(&["segoeuib.ttf", "arialbd.ttf"])?, regular: load(&["segoeui.ttf", "arial.ttf"])?, zh_bold: zh(ZH_BOLD), zh_regular: zh(ZH_REGULAR) })
+    }
+
+    /// The fonts for a pill's text: the Chinese ones when Segoe UI lacks one of its characters.
+    fn for_pill(&self, texts: &[&str]) -> (&fontdue::Font, &fontdue::Font) {
+        let missing = texts.iter().flat_map(|t| t.chars()).any(|c| !c.is_whitespace() && self.bold.lookup_glyph_index(c) == 0);
+        match (&self.zh_bold, &self.zh_regular) {
+            (Some(b), Some(r)) if missing => (b, r),
+            _ => (&self.bold, &self.regular),
+        }
     }
 }
 
@@ -271,9 +489,10 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
             Some((a, b)) if a.ends_with('%') => (a.to_string(), format!(" {b}")),
             _ => (String::new(), pill.sub.clone()),
         };
-        let tw = measure(&fonts.bold, &pill.main, big);
-        let ow = measure(&fonts.bold, &odds, small);
-        let rw = measure(&fonts.regular, &rest, small);
+        let (bold, regular) = fonts.for_pill(&[&pill.main, &pill.sub]);
+        let tw = measure(bold, &pill.main, big);
+        let ow = measure(bold, &odds, small);
+        let rw = measure(regular, &rest, small);
         let sw = if pill.sub.is_empty() { 0.0 } else { gap + ow + rw };
         let (ph, padx) = (46.0 * s, 20.0 * s);
         let pw = padx * 2.0 + mark + 12.0 * s + tw + sw;
@@ -289,12 +508,134 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
         }
         let base = py + ph / 2.0 + big * 0.35;
         let mut x = px + padx + mark + 12.0 * s;
-        text(&mut pm, &fonts.bold, &pill.main, big, x, base, (255, 255, 255), alpha);
+        text(&mut pm, bold, &pill.main, big, x, base, (255, 255, 255), alpha);
         x += tw + gap;
         if !pill.sub.is_empty() {
-            text(&mut pm, &fonts.bold, &odds, small, x, base, accent, alpha);
-            text(&mut pm, &fonts.regular, &rest, small, x + ow, base, (214, 206, 202), alpha);
+            text(&mut pm, bold, &odds, small, x, base, accent, alpha);
+            text(&mut pm, regular, &rest, small, x + ow, base, (214, 206, 202), alpha);
+        }
+    }
+    // not in upstream: what was read, under the pill, in a box of its own
+    if !plan.read.is_empty() {
+        let refs: Vec<&str> = plan.read.iter().map(String::as_str).collect();
+        let (_, regular) = fonts.for_pill(&refs);
+        let px_ = 16.0 * s;
+        let (line_h, padx, pady) = (24.0 * s, 14.0 * s, 8.0 * s);
+        let bw = refs.iter().map(|t| measure(regular, t, px_)).fold(0.0f32, f32::max) + 2.0 * padx;
+        let bh = line_h * refs.len() as f32 + 2.0 * pady;
+        let (bx, by) = ((w as f32 - bw) / 2.0, 14.0 * s + 46.0 * s + 8.0 * s);
+        let alpha = if plan.pill.as_ref().is_some_and(|p| p.dim) { 0.55 } else { 1.0 };
+        if let Some(p) = rounded(bx, by, bw, bh, 10.0 * s) {
+            pm.fill_path(&p, &paint(rgba(10, 8, 10, 0.82 * alpha)), FillRule::Winding, Transform::identity(), None);
+        }
+        for (k, t) in refs.iter().enumerate() {
+            text(&mut pm, regular, t, px_, bx + padx, by + pady + line_h * (k as f32 + 0.75), (214, 206, 202), alpha);
         }
     }
     pm
+}
+
+#[cfg(test)]
+mod zh_tests {
+    use super::*;
+
+    fn zh_fonts() -> (fontdue::Font, fontdue::Font) {
+        let f = |b: &[u8]| fontdue::Font::from_bytes(b, fontdue::FontSettings::default()).unwrap();
+        (f(ZH_BOLD), f(ZH_REGULAR))
+    }
+
+    /// Every character a Chinese hint can show is in the built-in font (else: run dev/make_font_zh.py again).
+    #[test]
+    fn the_chinese_font_has_every_character_of_the_hint() {
+        let z = &vorax_scan::scan_data().names_zh;
+        let mut texts: Vec<String> = ZH_ALL.iter().map(|s| s.to_string()).collect();
+        texts.push("→·「」（）、：0123456789% +Ctrl+Alt+Xk".into());
+        // the names the hint shows: each card's first form, and the unsupported ones as they're recognized
+        for m in [&z.potion, &z.instrument, &z.protocol] {
+            texts.extend(m.values().filter_map(|f| f.first()).cloned());
+        }
+        texts.extend(z.unsupported.iter().filter_map(|n| vorax_scan::titles::han_unsupported(vorax_scan::scan_data(), n)));
+        let (bold, regular) = zh_fonts();
+        for t in &texts {
+            for c in t.chars().filter(|c| !c.is_whitespace()) {
+                assert!(bold.lookup_glyph_index(c) != 0 && regular.lookup_glyph_index(c) != 0, "{c} ({t}) is not in data/fonts: run dev/make_font_zh.py");
+            }
+        }
+    }
+
+    #[test]
+    fn a_card_is_named_as_the_chinese_client_prints_it() {
+        assert_eq!(zh_name(ScreenPhase::Instrument, "Sinew Garrote"), "獸筋絞肉索");
+        assert_eq!(zh_name(ScreenPhase::Potion, "Slender-Limb Powder - Pest"), "細肢藥粉-蠱蟲");
+        assert_eq!(zh_name(ScreenPhase::Potion, "Not A Card"), "Not A Card");
+    }
+
+    /// VORAX_PILL_PNG=<dir>: the Chinese pills drawn there, to look at.
+    #[test]
+    fn chinese_pills_draw() {
+        let (bold, regular) = zh_fonts();
+        let (b2, r2) = zh_fonts();
+        let fonts = Fonts { bold, regular, zh_bold: Some(b2), zh_regular: Some(r2) };
+        let pills = [
+            Pill { main: "細肢藥粉-蠱蟲  →  第 3 格".into(), sub: "64% 達 840k".into(), dim: false },
+            Pill { main: "獸筋絞肉索  →  第 2 + 5 格".into(), sub: "41% 達 840k · 未讀到：第 2 張卡、第 3 格（Ctrl+Alt+X）".into(), dim: false },
+            Pill { main: "第一儀式聖水：告解".into(), sub: "出現就選 · 第 3 張卡「解剖浸液：病軀」不在資料內，請自行判斷".into(), dim: false },
+        ];
+        for (i, p) in pills.iter().enumerate() {
+            let plan = Plan { pill: Some(p.clone()), ..Default::default() };
+            let pm = render(&plan, 1600, 120, &fonts, (64, 232, 255));
+            assert!(pm.data().chunks(4).any(|px| px[3] > 0));
+            if let Ok(dir) = std::env::var("VORAX_PILL_PNG") {
+                crate::pipeline::encode_png(&std::path::Path::new(&dir).join(format!("pill{i}.png")), pm.width(), pm.height(), pm.data()).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn a_card_not_in_the_data_is_said_so_and_not_read_again() {
+        let data = vorax_scan::scan_data();
+        let mut r = vorax_scan::scan(&vorax_scan::pixels::Img::new(64, 64), data, false);
+        let art = |j: usize, text: Option<&str>| Problem::UnknownArt { field: format!("hand{j}"), crop: Rect::new(0.0, 0.0, 1.0, 1.0), hand: None, text: text.map(String::from) };
+        r.problems = vec![art(2, Some("解剖浸液：病軀"))];
+        let m = not_read(&r);
+        assert_eq!(m.unsupported, vec![(2, "解剖浸液：病軀".to_string())]);
+        assert!(m.is_empty(), "nothing to read again");
+        r.problems = vec![art(0, Some("細肢藥粉-")), art(2, Some("解剖浸液病軀")), art(1, None), Problem::Unreadable { field: "tank4.total".into() }];
+        let m = not_read(&r);
+        assert_eq!((m.cards.clone(), m.tanks.clone(), m.unsupported.len()), (vec![0, 1], vec![4], 1));
+        assert!(!m.is_empty());
+    }
+
+    #[test]
+    fn what_was_read_is_two_lines_from_the_left() {
+        let state: ScreenState = serde_json::from_str(r#"{"tanks":[{"archetype":"boneSentry","rarity":"rare","activity":15,"quantity":12},null,{"archetype":"aemberon","rarity":"normal","activity":1,"quantity":36},null,null,{"archetype":"boneSentry","rarity":"normal","activity":1,"quantity":109}],"hand":["Hollow Spinal Solution","Eggshell Powder"],"instruments":[],"phase":"potion","round":2}"#).unwrap();
+        let missed = Missed { cards: vec![1], tanks: vec![3], unsupported: vec![] };
+        let lines = read_lines(&state, 3, &[0, 2], &missed, true);
+        assert_eq!(lines, vec!["卡：1 空心脊髓溶液｜2 ？｜3 卵殼藥粉".to_string(), "槽：1 稀有骨衛兵 15×12｜2 空｜3 普通異魔 1×36｜4 ？｜5 空｜6 普通骨衛兵 1×109".to_string()]);
+        let en = read_lines(&state, 3, &[0, 2], &missed, false);
+        assert_eq!(en[1], "tanks: 1 rare Bone Sentry 15×12 | 2 empty | 3 normal Aemberon 1×36 | 4 ? | 5 empty | 6 normal Bone Sentry 1×109");
+    }
+
+    /// VORAX_FRAME=<png> VORAX_PILL_PNG=<dir>: that frame read (cards by their pictures) and drawn over, to look at.
+    #[test]
+    fn a_frame_drawn_with_what_was_read() {
+        let (Ok(frame), Ok(dir)) = (std::env::var("VORAX_FRAME"), std::env::var("VORAX_PILL_PNG")) else { return };
+        let img = crate::pipeline::decode_png(std::path::Path::new(&frame)).unwrap();
+        let mut pipe = crate::pipeline::Pipeline::new(6);
+        pipe.script = vorax_scan::titles::Script::Han;
+        let crate::pipeline::Outcome::Advice { plan, .. } = pipe.run(&img, Some("board"), None) else { panic!("not a board") };
+        let (bold, regular) = zh_fonts();
+        let (b2, r2) = zh_fonts();
+        let fonts = Fonts { bold, regular, zh_bold: Some(b2), zh_regular: Some(r2) };
+        let mut pm = render(&plan, img.width as u32, img.height as u32, &fonts, (64, 232, 255));
+        // over the frame, to see it as on screen
+        let mut out = img.data.clone();
+        for (o, p) in out.chunks_mut(4).zip(pm.data_mut().chunks(4)) {
+            let a = p[3] as u32;
+            for c in 0..3 {
+                o[c] = (p[c] as u32 + o[c] as u32 * (255 - a) / 255).min(255) as u8;
+            }
+        }
+        crate::pipeline::encode_png(&std::path::Path::new(&dir).join("frame.png"), img.width as u32, img.height as u32, &out).unwrap();
+    }
 }

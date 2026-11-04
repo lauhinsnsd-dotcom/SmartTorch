@@ -70,11 +70,14 @@ const WM_TRAY: u32 = WM_APP + 2;
 const HK_TOGGLE: i32 = 1;
 const HK_SNAP: i32 = 2;
 const HK_QUIT: i32 = 3;
+/// not in upstream: show or hide what was read (Ctrl+Alt+D)
+const HK_READ: i32 = 4;
 const TIMER_FOLLOW: usize = 1;
 const MENU_TOGGLE: u32 = 10;
 const MENU_SNAP: u32 = 11;
 const MENU_LOG: u32 = 12;
 const MENU_QUIT: u32 = 13;
+const MENU_READ: u32 = 14;
 /// Shelley levels 1-6 are MENU_SHELLEY + level
 const MENU_SHELLEY: u32 = 20;
 /// the marks' colours are MENU_ACCENT + their index in draw::ACCENTS
@@ -102,6 +105,8 @@ struct State {
     /// the game's log, once the worker has looked; whether its help card has shown by itself this run
     game_log: Option<GameLog>,
     log_help_shown: bool,
+    /// not in upstream: what was read shown under the pill (Ctrl+Alt+D), on at each start
+    show_read: bool,
     /// to send itself what the update's download thread finds
     to_self: Sender<ToUi>,
     /// a newer release, and how far its download is
@@ -147,7 +152,7 @@ pub fn create(fonts: Fonts, rx: Receiver<ToUi>, to_self: Sender<ToUi>, tx: Sende
             instance,
             None,
         )?;
-        for (id, vk) in [(HK_TOGGLE, 'V'), (HK_SNAP, 'X'), (HK_QUIT, 'Q')] {
+        for (id, vk) in [(HK_TOGGLE, 'V'), (HK_SNAP, 'X'), (HK_QUIT, 'Q'), (HK_READ, 'D')] {
             if RegisterHotKey(hwnd, id, HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0 | MOD_NOREPEAT.0), vk as u32).is_err() {
                 note(&format!("hotkey Ctrl+Alt+{vk} is taken by another program"));
             }
@@ -158,7 +163,7 @@ pub fn create(fonts: Fonts, rx: Receiver<ToUi>, to_self: Sender<ToUi>, tx: Sende
         let _ = Shell_NotifyIconW(NIM_ADD, &nid);
         SetTimer(hwnd, TIMER_FOLLOW, 250, None);
         STATE.with(|s| {
-            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, to_self, update: None, updating: None, args });
+            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, show_read: true, to_self, update: None, updating: None, args });
         });
         Ok(Waker(Hwnd::of(hwnd)))
     }
@@ -271,6 +276,9 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                     with_state(|s| s.tx.send(ToWorker::Snap).ok());
                 }
                 HK_QUIT => quit(hwnd),
+                HK_READ => {
+                    with_state(toggle_read);
+                }
                 _ => {}
             }
             LRESULT(0)
@@ -299,6 +307,13 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
 fn toggle(s: &mut State) {
     s.settings.shown = !s.settings.shown;
     s.settings.save();
+    s.placed = None;
+    follow(s);
+}
+
+/// Shows or hides what was read (not in upstream).
+fn toggle_read(s: &mut State) {
+    s.show_read = !s.show_read;
     s.placed = None;
     follow(s);
 }
@@ -351,6 +366,7 @@ fn tray_menu(hwnd: HWND) {
         rows.push(Row::Separator);
         rows.push(Row::Switch { id: MENU_TOGGLE, label: "Show overlay".into(), on: s.settings.shown });
         rows.push(Row::Action { id: MENU_SNAP, label: "Read the board now".into(), shortcut: "Ctrl+Alt+X".into() });
+        rows.push(Row::Switch { id: MENU_READ, label: "Show what was read (Ctrl+Alt+D)".into(), on: s.show_read });
         rows.push(Row::Levels { base: MENU_SHELLEY, level: s.settings.shelley, hint: rerolls_hint });
         rows.push(Row::Colors { base: MENU_ACCENT, selected: s.settings.accent });
         rows.push(Row::Separator);
@@ -470,6 +486,9 @@ unsafe fn command(hwnd: HWND, id: u32) {
         MENU_TOGGLE => {
             with_state(toggle);
         }
+        MENU_READ => {
+            with_state(toggle_read);
+        }
         MENU_SNAP => {
             with_state(|s| s.tx.send(ToWorker::Snap).ok());
         }
@@ -543,6 +562,9 @@ fn draw(s: &State, (x, y, w, h): (i32, i32, i32, i32)) {
     let (fw, fh) = s.frame;
     let (sx, sy) = if fw > 0 && fh > 0 { (w as f64 / fw as f64, h as f64 / fh as f64) } else { (1.0, 1.0) };
     let mut p = if s.busy { plan.dimmed() } else { plan.clone() };
+    if !s.show_read {
+        p.read.clear();
+    }
     if let Some((c, cw, ch)) = &mut p.card {
         c.cx *= sx;
         c.cy *= sy;

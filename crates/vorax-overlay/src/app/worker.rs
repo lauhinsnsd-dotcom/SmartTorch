@@ -15,6 +15,8 @@ pub struct Options {
     pub log: Option<PathBuf>,
     pub shelley: i32,
     pub ocr: bool,
+    /// --ocr-lang <tag>: the language card titles are read in ("zh" for a Chinese client)
+    pub ocr_lang: Option<String>,
     /// --frames <dir>: every picture read is saved there, named by what came of it
     pub frames: Option<PathBuf>,
 }
@@ -25,6 +27,10 @@ const RELOOK: Duration = Duration::from_millis(1500);
 /// hidden (the board they were for is gone, and no log line may come to say when the new one has landed).
 const RETRY: Duration = Duration::from_millis(700);
 const RETRIES: u32 = 3;
+/// not in upstream: a board with a card or tank not read is read again this much later, up to this many times (the
+/// player's hand over a card, a light sweeping the screen), before the hint is left to Ctrl+Alt+X
+const REREAD: Duration = Duration::from_millis(1000);
+const REREADS: u32 = 2;
 
 /// A line the game writes only with its log on (Esc → Account Related → Enable Log): with it on, one comes at
 /// least every ~10 s (pings, sounds, clicks); with it off, only a few as the game starts.
@@ -48,9 +54,9 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
         }
     };
     let ocr = if opts.ocr {
-        match Ocr::new() {
+        match Ocr::with_language(opts.ocr_lang.as_deref()) {
             Ok(o) => {
-                note(&format!("card titles read with Windows OCR ({})", o.language));
+                note(&format!("card titles read with Windows OCR ({}){}", o.language, if o.script() == vorax_scan::titles::Script::Han { ", matched to the cards' Chinese names" } else { "" }));
                 Some(o)
             }
             Err(e) => {
@@ -65,6 +71,7 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
         note(&format!("saving every picture read to {}", dir.display()));
     }
     let mut pipe = Pipeline::new(opts.shelley);
+    pipe.script = ocr.as_ref().map_or(vorax_scan::titles::Script::Latin, |o| o.script());
     let mut follower: Option<Follower> = None;
     let mut looked_for_log = Instant::now() - Duration::from_secs(60);
     let mut settler = Settler::default();
@@ -73,6 +80,9 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
     // a look again at a card in flight: when, for which trigger, and how many have been made
     let mut retry: Option<(Instant, Option<&'static str>)> = None;
     let mut retries = 0;
+    // a read again of a board not fully read: when, and how many have been made on this board
+    let mut reread_at: Option<Instant> = None;
+    let mut rereads = 0;
     let mut was_over = false;
     // the game's log: when it last had a game line, since when the game is open, and what the window was told
     let mut game_line_at: Option<Instant> = None;
@@ -126,6 +136,7 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
                 note("the game's Vorax screen closed");
                 send(ToUi::Clear);
                 retry = None;
+                reread_at = None;
             }
             was_over = settler.over;
         }
@@ -154,9 +165,11 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
         let due = settler.due(now_ms());
         let relook = relook_at.is_some_and(|t| Instant::now() >= t);
         let again = retry.filter(|(t, _)| Instant::now() >= *t);
-        if due.is_some() || manual || relook || again.is_some() {
+        let reread = reread_at.is_some_and(|t| Instant::now() >= t);
+        if due.is_some() || manual || relook || again.is_some() || reread {
             relook_at = None;
             retry = None;
+            reread_at = None;
             let trigger = match due {
                 Some(Trigger::Screen) => Some("screen"),
                 Some(_) => Some("board"),
@@ -164,11 +177,20 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
             };
             if due.is_some() || manual {
                 retries = 0;
+                rereads = 0;
             }
-            // the look again after a pick, to settle the new icon: the board hasn't changed, so the marks stay up
-            // while it reads and only change if what it finds does
-            let quiet = relook && due.is_none() && !manual && again.is_none();
-            let animating = read(&capturer, ocr.as_ref(), &mut pipe, trigger, manual || relook, quiet, opts.frames.as_deref(), &send);
+            // the look again after a pick, to settle the new icon, or at a board not fully read: the board hasn't
+            // changed, so the marks stay up while it reads and only change if what it finds does
+            let only_reread = reread && !relook && due.is_none() && !manual && again.is_none();
+            let quiet = (relook || reread) && due.is_none() && !manual && again.is_none();
+            let label = if only_reread { "reread" } else { "manual" };
+            let (animating, missed) = read(&capturer, ocr.as_ref(), &mut pipe, trigger, label, manual || relook || reread, quiet, opts.frames.as_deref(), &send);
+            if missed && rereads < REREADS && !settler.over {
+                rereads += 1;
+                reread_at = Some(Instant::now() + REREAD);
+            } else if missed && only_reread {
+                note(&format!("still not fully read after {REREADS} more reads: Ctrl+Alt+X reads it again"));
+            }
             if !animating || quiet {
                 retries = 0;
             } else if retries < RETRIES {
@@ -200,12 +222,14 @@ fn last_game_line_age(path: &Path) -> Option<Duration> {
     Some(Duration::from_millis((now - at).max(0.0) as u64))
 }
 
-/// Takes a picture, reads it and advises; true when a card was in flight (nothing read).
+/// Takes a picture, reads it and advises: whether a card was in flight (nothing read), and whether the board was
+/// read with a card or tank not made out (the hint's "not read", outside the protocol rounds that get no advice).
+/// `label` names a read without a trigger in the log and the saved frames ("manual", "reread").
 #[allow(clippy::too_many_arguments)]
-fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Option<&str>, now: bool, quiet: bool, frames: Option<&Path>, send: &dyn Fn(ToUi)) -> bool {
+fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Option<&str>, label: &str, now: bool, quiet: bool, frames: Option<&Path>, send: &dyn Fn(ToUi)) -> (bool, bool) {
     let Some(game) = find_game_window() else {
         note("the game's window isn't open");
-        return false;
+        return (false, false);
     };
     if !quiet {
         send(ToUi::Busy);
@@ -217,18 +241,27 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
         Ok(None) => {
             note("no picture from the game's window");
             send(ToUi::Unbusy);
-            return false;
+            return (false, false);
         }
         Err(e) => {
             note(&format!("capture failed: {e}"));
             send(ToUi::Unbusy);
-            return false;
+            return (false, false);
         }
     };
     let grabbed = t.elapsed().as_millis();
-    let mut read_text = |img: &vorax_scan::pixels::Img| ocr.and_then(|o| o.read(img).ok()).unwrap_or_default();
+    // what the text reader made of each card title, for the debug log (a card not read shows why)
+    let mut ocr_texts: Vec<String> = Vec::new();
+    let mut read_text = |img: &vorax_scan::pixels::Img| {
+        let t = ocr.and_then(|o| o.read(img).ok()).unwrap_or_default();
+        ocr_texts.push(t.replace('\n', " / "));
+        t
+    };
     let reader: crate::pipeline::TextReader = if ocr.is_some() { Some(&mut read_text) } else { None };
     let outcome = pipe.run(&frame, trigger, reader);
+    if !ocr_texts.is_empty() {
+        note(&format!("card titles read: {}", ocr_texts.iter().map(|t| format!("[{t}]")).collect::<Vec<_>>().join(" ")));
+    }
     if pipe.resumed {
         note("the Vorax screen opened again on the game under way: it goes on (instruments kept)");
     }
@@ -239,12 +272,16 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
         Outcome::Closing => "closing",
     };
     let animating = matches!(outcome, Outcome::Animating);
+    let missed = match &outcome {
+        Outcome::Advice { reading, .. } => reading.state.phase != vorax::advisor::ScreenPhase::Protocol && !crate::draw::not_read(reading).is_empty(),
+        _ => false,
+    };
     match outcome {
         Outcome::Advice { reading, advice, plan, read_ms } => {
             let mv = plan.pill.as_ref().map_or("(nothing to advise)".to_string(), |p| format!("{} · {}", p.main, p.sub));
             note(&format!(
                 "{} {}x{}: picture {grabbed} ms, read {read_ms:.0} ms, advice {} ms → {mv}; board {}",
-                trigger.unwrap_or("manual"),
+                trigger.unwrap_or(label),
                 frame.width,
                 frame.height,
                 advice.ms,
@@ -256,24 +293,24 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
         // the board changed and a card is still moving: the marks stay hidden (the pill dimmed) while it looks again,
         // rather than the old ones blinking back between looks (2-3 flashes while long effects play out)
         Outcome::Animating => {
-            note(&format!("{}: picture {grabbed} ms, a card was flying off: looking again", trigger.unwrap_or("manual")));
+            note(&format!("{}: picture {grabbed} ms, a card was flying off: looking again", trigger.unwrap_or(label)));
         }
         Outcome::Closing => {
-            note(&format!("{}: the game closing after the protocols, not a board", trigger.unwrap_or("manual")));
+            note(&format!("{}: the game closing after the protocols, not a board", trigger.unwrap_or(label)));
             send(ToUi::Clear);
         }
         Outcome::NotGame => {
-            note(&format!("{}: not the Surgical Preparation screen", trigger.unwrap_or("manual")));
+            note(&format!("{}: not the Surgical Preparation screen", trigger.unwrap_or(label)));
             send(ToUi::Clear);
         }
     }
     if let Some(dir) = frames {
         let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
-        let path = dir.join(format!("{ms}-{}-{kind}.png", trigger.unwrap_or("manual")));
+        let path = dir.join(format!("{ms}-{}-{kind}.png", trigger.unwrap_or(label)));
         let saved = std::fs::create_dir_all(dir).map_err(|e| e.to_string()).and_then(|_| crate::pipeline::encode_png(&path, frame.width as u32, frame.height as u32, &frame.data));
         if let Err(e) = saved {
             note(&format!("frame not saved: {e}"));
         }
     }
-    animating
+    (animating, missed)
 }

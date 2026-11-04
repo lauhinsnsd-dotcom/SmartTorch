@@ -13,6 +13,8 @@ use crate::text::{read_text, TextKind};
 use vorax::advisor::ScreenPhase;
 
 const DIGIT_MIN: f64 = 0.75;
+/// How far a round's read must be ahead of the next best digits to be sure (not in upstream).
+const ROUND_GAP: f64 = 0.05;
 
 /// Upstream's reading, exactly (the parity tests hold this one to the TypeScript). `pictures`: false leaves the
 /// cards to their printed names (read_titles afterwards). The interface scale that read last is tried first; when
@@ -144,9 +146,46 @@ pub fn scan_with(captured: &Img, data: &ScanData, pictures: bool, hand_dy: Optio
         shelley: None,
     };
 
-    let round = read_text(img, &g, &l.round, TextKind::Round, &data.digits["round"]);
-    let n: f64 = round.as_ref().and_then(|r| (!r.text.is_empty()).then(|| r.text.parse::<f64>().unwrap_or(f64::NAN))).unwrap_or(if round.is_some() { 0.0 } else { f64::NAN });
-    let round_ok = round.as_ref().is_some_and(|r| n.fract() == 0.0 && (1.0..=13.0).contains(&n) && r.score >= DIGIT_MIN);
+    let zh_round = data.digits_with_zh("round");
+    let read_round_with = |dx: f64, dy: f64, refs: &indexmap::IndexMap<String, Vec<Vec<f64>>>| {
+        let r = crate::pixels::Rect::new(l.round.x + dx * l.k, l.round.y + dy * l.k, l.round.w, l.round.h);
+        let round = read_text(img, &g, &r, TextKind::Round, refs);
+        let n: f64 = round.as_ref().and_then(|r| (!r.text.is_empty()).then(|| r.text.parse::<f64>().unwrap_or(f64::NAN))).unwrap_or(if round.is_some() { 0.0 } else { f64::NAN });
+        let ok = round.as_ref().is_some_and(|r| n.fract() == 0.0 && (1.0..=13.0).contains(&n) && r.score >= DIGIT_MIN);
+        // not in upstream: a read only just ahead of another digit isn't sure (a Chinese client's 5 reads about as
+        // well as a 6 against the English references)
+        let ok = ok && (upstream || round.as_ref().is_some_and(|r| r.score - r.second >= ROUND_GAP));
+        (round, n, ok)
+    };
+    let read_round = |dx: f64, dy: f64| read_round_with(dx, dy, &data.digits["round"]);
+    let (mut round, mut n, mut round_ok) = read_round(0.0, 0.0);
+    // not in upstream: on a window shape it wasn't measured on the round can sit a little lower or aside; looked
+    // for around its place, the surest read wins
+    if !round_ok && !upstream {
+        let mut best: Option<(Option<crate::text::TextRead>, f64, bool)> = None;
+        for dy in [4.0, 8.0, 12.0, 16.0, 20.0, -4.0, -8.0] {
+            for dx in [0.0, -6.0, 6.0, -12.0, 12.0] {
+                let r = read_round(dx, dy);
+                if r.2 && best.as_ref().is_none_or(|b| r.0.as_ref().unwrap().score > b.0.as_ref().unwrap().score) {
+                    best = Some(r);
+                }
+            }
+        }
+        // then with a Chinese client's digits as well (its round numbers are drawn a little differently)
+        if best.is_none() {
+            for dy in [8.0, 4.0, 12.0, 0.0, 16.0, 20.0, -4.0, -8.0] {
+                for dx in [0.0, -6.0, 6.0, -12.0, 12.0] {
+                    let r = read_round_with(dx, dy, &zh_round);
+                    if r.2 && best.as_ref().is_none_or(|b| r.0.as_ref().unwrap().score > b.0.as_ref().unwrap().score) {
+                        best = Some(r);
+                    }
+                }
+            }
+        }
+        if let Some(b) = best {
+            (round, n, round_ok) = b;
+        }
+    }
     state.round = Some(if round_ok { n as i32 } else { 1 });
     fields.insert("round".into(), FieldRead { sure: round_ok, guess: round.as_ref().map(|r| r.text.clone()), score: round.as_ref().map(|r| r.score), second: round.as_ref().map(|r| r.second) });
     if !round_ok {

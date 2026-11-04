@@ -5,13 +5,15 @@ use crate::data::ScanData;
 use crate::layout::Layout;
 use crate::pixels::{hsv, Img, Rect};
 use crate::reading::{FieldRead, Fields, TankDebug};
-use crate::text::{brightest, read_text, TextKind};
+use crate::text::{brightest, read_text, TextKind, TextRead};
 use vorax::advisor::ScreenMonster;
 use vorax::types::{Archetype, Rarity};
 
 const NAME_MIN: f64 = 105.0;
 const DIGIT_MIN: f64 = 0.75;
 const MAX_STAT: f64 = 1_000_000.0;
+/// Where else a label's lines are looked for (reference pixels), nearest first.
+const LABEL_SHIFTS: [f64; 10] = [3.0, -3.0, 6.0, -6.0, 9.0, -9.0, 12.0, -12.0, 15.0, -15.0];
 
 /// JavaScript's Number() of a string of digits: "" is 0, anything else not a number is NaN.
 pub(crate) fn js_number(s: &str) -> f64 {
@@ -37,8 +39,18 @@ pub fn stats(total: Option<&str>, aq: Option<&str>) -> (f64, f64, bool) {
     (a, q, a * q == t)
 }
 
+/// An Activity × Quantity line read without its "x": the one place an "x" could stand that makes the total.
+pub fn x_misread(total: &str, aq: &str) -> Option<String> {
+    if aq.contains('x') || aq.len() < 3 || !aq.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let fits: Vec<String> = (1..aq.len() - 1).map(|p| format!("{}x{}", &aq[..p], &aq[p + 1..])).filter(|line| stats(Some(total), Some(line)).2).collect();
+    (fits.len() == 1).then(|| fits[0].clone())
+}
+
 /// Archetype from the little icon above a tank's name, by colour.
-pub fn archetype_of(img: &Img, r: &Rect) -> (Archetype, bool) {
+/// Pixels of each icon colour in a rect: Bone Sentry's gold, Pest's purple, Aemberon's blue.
+fn archetype_counts(img: &Img, r: &Rect) -> [(Archetype, usize); 3] {
     let mut n = [(Archetype::BoneSentry, 0usize), (Archetype::Pest, 0), (Archetype::Aemberon, 0)];
     let x0 = r.x.floor().max(0.0) as usize;
     let y0 = r.y.floor().max(0.0) as usize;
@@ -61,6 +73,11 @@ pub fn archetype_of(img: &Img, r: &Rect) -> (Archetype, bool) {
         }
         y += 1;
     }
+    n
+}
+
+pub fn archetype_of(img: &Img, r: &Rect) -> (Archetype, bool) {
+    let n = archetype_counts(img, r);
     let mut sorted = n;
     sorted.sort_by(|a, b| b.1.cmp(&a.1));
     let (best, count) = sorted[0];
@@ -71,6 +88,125 @@ pub fn archetype_of(img: &Img, r: &Rect) -> (Archetype, bool) {
     } else {
         (Archetype::Agito, true)
     }
+}
+
+/// Not in upstream: the icon found over the monster's name, for window shapes the scene wasn't measured on (the
+/// tanks there sit a little off the blend of the 16:9 and 21:9 measurements, enough to miss a small icon). The
+/// name's middle is taken from its bright pixels; the icon is looked for above it, a little lower first.
+fn icon_over_name(img: &Img, l: &Layout, i: usize) -> Option<Rect> {
+    let nb = l.name_band[i];
+    let (x0, x1) = (nb.x.max(0.0) as usize, ((nb.x + nb.w) as usize).min(img.width));
+    let (y0, y1) = (nb.y.max(0.0) as usize, ((nb.y + nb.h) as usize).min(img.height));
+    let mid = (nb.x + nb.w / 2.0) as isize;
+    let cols: Vec<usize> = (x0..x1)
+        .filter(|&x| {
+            (y0..y1)
+                .filter(|&y| {
+                    let (r, g, b) = img.px(x, y);
+                    0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64 >= 95.0
+                })
+                .count()
+                >= 2
+        })
+        .collect();
+    // the run of name columns nearest the band's middle (gaps between characters bridged)
+    let gap = (12.0 * l.k) as usize;
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    for &x in &cols {
+        match runs.last_mut() {
+            Some(r) if x <= r.1 + gap => r.1 = x,
+            _ => runs.push((x, x)),
+        }
+    }
+    let near = runs.into_iter().min_by_key(|r| ((r.0 + r.1) as isize / 2 - mid).abs())?;
+    if ((near.1 - near.0) as f64) < 20.0 * l.k {
+        return None;
+    }
+    let cx = (near.0 + near.1) as f64 / 2.0;
+    let icon = l.icon[i];
+    let size = icon.w;
+    let mut best: Option<(Rect, usize)> = None;
+    for dy in [12.0, 8.0, 16.0, 4.0, 0.0] {
+        let r = Rect::new(cx - size / 2.0, icon.y + dy * l.k, size, size * 0.85);
+        let n = archetype_counts(img, &r).iter().map(|c| c.1).max().unwrap_or(0);
+        if best.as_ref().is_none_or(|b| n > b.1) {
+            best = Some((r, n));
+        }
+    }
+    best.map(|b| b.0)
+}
+
+/// Whether a rect holds an icon: one of the families' colours (as archetype_of counts them) or Agito's red.
+fn has_icon(img: &Img, r: &Rect) -> bool {
+    let coloured: usize = archetype_counts(img, r).iter().map(|c| c.1).sum();
+    let mut red = 0usize;
+    let (x0, y0) = (r.x.max(0.0) as usize, r.y.max(0.0) as usize);
+    let (x1, y1) = (((r.x + r.w) as usize).min(img.width), ((r.y + r.h) as usize).min(img.height));
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let (rr, gg, bb) = img.px(x, y);
+            let (h, s, v) = hsv(rr, gg, bb);
+            if v >= 0.45 && s >= 0.5 && (h < 15.0 || h > 340.0) {
+                red += 1;
+            }
+        }
+    }
+    coloured >= 4 || red >= 4
+}
+
+/// Not in upstream: the icon looked for strictly above the monster's name. A Chinese client's names stand taller
+/// than English ones, so on some window shapes the layout's icon box takes in the name's top, and a Rare name's
+/// gold (or a Magic name's blue) passes for a Bone Sentry's (or an Aemberon's) icon. The name's columns and its top
+/// row are found from its bright pixels; the icon is taken from the rows just above that top.
+fn icon_above_name(img: &Img, l: &Layout, i: usize) -> Option<Rect> {
+    let nb = l.name_band[i];
+    let size = l.icon[i].w;
+    let bright = |x: usize, y: usize| {
+        let (r, g, b) = img.px(x, y);
+        0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64 >= 95.0
+    };
+    let (x0, x1) = (nb.x.max(0.0) as usize, ((nb.x + nb.w) as usize).min(img.width));
+    let (y0, y1) = (nb.y.max(0.0) as usize, ((nb.y + nb.h) as usize).min(img.height));
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    // the name's columns: the run of bright columns nearest the band's middle (gaps between characters bridged)
+    let cols: Vec<usize> = (x0..x1).filter(|&x| (y0..y1).filter(|&y| bright(x, y)).count() >= 2).collect();
+    let gap = (12.0 * l.k) as usize;
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    for &x in &cols {
+        match runs.last_mut() {
+            Some(r) if x <= r.1 + gap => r.1 = x,
+            _ => runs.push((x, x)),
+        }
+    }
+    let mid = (nb.x + nb.w / 2.0) as isize;
+    let name = runs.into_iter().min_by_key(|r| ((r.0 + r.1) as isize / 2 - mid).abs())?;
+    if ((name.1 - name.0) as f64) < 20.0 * l.k {
+        return None;
+    }
+    // the name's top row: up from the band's middle while its columns hold bright pixels (two dark rows end it)
+    let lit = |y: usize| (name.0..=name.1).filter(|&x| bright(x, y)).count() >= 2;
+    let lowest = (nb.y - 2.0 * size).max(0.0) as usize;
+    let mut y = ((nb.y + nb.h / 2.0) as usize).min(img.height - 1);
+    let mut top = y;
+    let mut dark = 0;
+    while y > lowest {
+        y -= 1;
+        if lit(y) {
+            top = y;
+            dark = 0;
+        } else {
+            dark += 1;
+            if dark >= 2 {
+                break;
+            }
+        }
+    }
+    let cx = (name.0 + name.1) as f64 / 2.0;
+    let h = size * 1.2;
+    let bottom = top as f64 - 1.0;
+    (bottom - h > 0.0).then(|| Rect::new(cx - size * 0.7, bottom - h, size * 1.4, h))
 }
 
 const MAX_COMBOS: usize = 200_000;
@@ -210,27 +346,121 @@ fn num(x: f64) -> String {
 /// `glow`: an empty tank's red glow taken for empty (not in upstream).
 pub fn read_tank(img: &Img, g: &[f32], l: &Layout, i: usize, data: &ScanData, glow: bool) -> TankRead {
     let mut fields = Fields::new();
-    let rgb = brightest(img, &l.name_band[i]);
-    // Math.max(...rgb) < NAME_MIN, where a NaN (a band off the picture) makes it false
-    let max = if rgb.iter().any(|v| v.is_nan()) { f64::NAN } else { rgb[0].max(rgb[1]).max(rgb[2]) };
-    if max < NAME_MIN || (glow && empty_glow(rgb)) {
-        fields.insert(format!("tank{i}.empty"), FieldRead::sure(true));
-        return TankRead { monster: None, fields, debug: None };
+    let refs = &data.digits["label"];
+    let read_at = |dt: f64, da: f64| {
+        let down = |r: &Rect, dy: f64| Rect::new(r.x, r.y + dy * l.k, r.w, r.h);
+        let total = read_text(img, g, &down(&l.total_band[i], dt), TextKind::Label, refs);
+        let aq = read_text(img, g, &down(&l.aq_band[i], da), TextKind::Label, refs);
+        let mut st = stats(total.as_ref().map(|t| t.text.as_str()), aq.as_ref().map(|t| t.text.as_str()));
+        let fix = if !st.2 { if let (Some(t), Some(a)) = (&total, &aq) { reconcile(&t.alts, &a.alts) } else { None } } else { None };
+        if let Some((t, a)) = &fix {
+            st = stats(Some(t), Some(a));
+        }
+        let fits = st.2 && total.is_some() && aq.is_some() && (fix.is_some() || (total.as_ref().unwrap().score >= DIGIT_MIN && aq.as_ref().unwrap().score >= DIGIT_MIN));
+        (total, aq, st, fits)
+    };
+    // a read found by searching around counts only when both lines read well: reconciling weak glyphs there can
+    // make a line up out of noise ("4" and "4 x 1" from a label that says 31125 and 125 x 249)
+    let confident = |r: &(Option<TextRead>, Option<TextRead>, (f64, f64, bool), bool)| {
+        r.3 && r.0.as_ref().is_some_and(|t| t.score >= DIGIT_MIN) && r.1.as_ref().is_some_and(|a| a.score >= DIGIT_MIN)
+    };
+    let is_empty = |rgb: [f64; 3]| {
+        // Math.max(...rgb) < NAME_MIN, where a NaN (a band off the picture) makes it false
+        let max = if rgb.iter().any(|v| v.is_nan()) { f64::NAN } else { rgb[0].max(rgb[1]).max(rgb[2]) };
+        max < NAME_MIN || (glow && empty_glow(rgb))
+    };
+    let mut rgb = brightest(img, &l.name_band[i]);
+    let mut found: Option<(Option<TextRead>, Option<TextRead>, (f64, f64, bool), bool)> = None;
+    if is_empty(rgb) {
+        // not in upstream: on a window shape the scene wasn't measured on, a monster's label can sit off its
+        // bands and the tank pass for empty (a Bone Sentry missed, its instruments' effects then misjudged). It
+        // counts as a monster only when a name shows a little higher or lower and its numbers multiply up there.
+        if glow {
+            // a short plain name over a grey glass reads dim (士兵, white with few strokes: 104 against NAME_MIN 105 at
+            // 2732x1426, and taken for empty for nine rounds): its numbers in place, multiplying up, say it's there
+            let r = read_at(0.0, 0.0);
+            if confident(&r) {
+                found = Some(r);
+            }
+        }
+        if glow && found.is_none() {
+            for dy in LABEL_SHIFTS {
+                let nb = l.name_band[i];
+                let shifted = brightest(img, &Rect::new(nb.x, nb.y + dy * l.k, nb.w, nb.h));
+                if !is_empty(shifted) {
+                    let r = read_at(dy, dy);
+                    if confident(&r) {
+                        rgb = shifted;
+                        found = Some(r);
+                        break;
+                    }
+                }
+            }
+        }
+        if found.is_none() {
+            fields.insert(format!("tank{i}.empty"), FieldRead::sure(true));
+            return TankRead { monster: None, fields, debug: None };
+        }
     }
     let (rarity, sure) = rarity_of(rgb);
     fields.insert(format!("tank{i}.rarity"), FieldRead { sure, guess: Some(rarity_name(rarity).into()), ..Default::default() });
-    let (archetype, a_sure) = archetype_of(img, &l.icon[i]);
+    let (mut archetype, mut a_sure) = archetype_of(img, &l.icon[i]);
+    // not in upstream: the icon above the name's top, where a name can't pass for an icon. It decides when an icon
+    // shows there: a coloured one, or Agito's red eye (Agito is otherwise only the absence of the others' colours)
+    let above = if glow { icon_above_name(img, l, i).filter(|r| has_icon(img, r)) } else { None };
+    if let Some(r) = above {
+        (archetype, a_sure) = archetype_of(img, &r);
+    } else {
+        // no icon colour where the layout puts it (upstream calls that Agito): looked for over the name
+        if glow && archetype == Archetype::Agito {
+            if let Some(r) = icon_over_name(img, l, i) {
+                (archetype, a_sure) = archetype_of(img, &r);
+            }
+        }
+        if glow && !a_sure {
+            if let Some(r) = icon_over_name(img, l, i) {
+                let found = archetype_of(img, &r);
+                if found.1 {
+                    (archetype, a_sure) = found;
+                }
+            }
+        }
+    }
     fields.insert(format!("tank{i}.archetype"), FieldRead { sure: a_sure, guess: Some(archetype_name(archetype).into()), ..Default::default() });
 
-    let refs = &data.digits["label"];
-    let total = read_text(img, g, &l.total_band[i], TextKind::Label, refs);
-    let aq = read_text(img, g, &l.aq_band[i], TextKind::Label, refs);
-    let mut st = stats(total.as_ref().map(|t| t.text.as_str()), aq.as_ref().map(|t| t.text.as_str()));
-    let fix = if !st.2 { if let (Some(t), Some(a)) = (&total, &aq) { reconcile(&t.alts, &a.alts) } else { None } } else { None };
-    if let Some((t, a)) = &fix {
-        st = stats(Some(t), Some(a));
+    let (mut total, mut aq, mut st, mut fits) = found.unwrap_or_else(|| read_at(0.0, 0.0));
+    // not in upstream: on a window shape the scene wasn't measured on, the label can sit a few pixels off its
+    // bands; looked for a little higher and lower, the nearest place where the line multiplies to the total wins
+    // not in upstream: a small "x" read as a digit ("331 x 1" as "33131"): the one glyph that, taken for the "x",
+    // leaves a line that multiplies to the total, if just one does
+    if !fits && glow {
+        if let (Some(t), Some(a)) = (&total, &aq) {
+            if let Some(line) = x_misread(&t.text, &a.text) {
+                st = stats(Some(&t.text), Some(&line));
+                fits = st.2 && t.score >= DIGIT_MIN;
+            }
+        }
     }
-    let fits = st.2 && total.is_some() && aq.is_some() && (fix.is_some() || (total.as_ref().unwrap().score >= DIGIT_MIN && aq.as_ref().unwrap().score >= DIGIT_MIN));
+    if !fits && glow {
+        // both lines moved together first, then each on its own
+        let together = LABEL_SHIFTS.iter().map(|&d| (d, d));
+        let apart = std::iter::once(0.0).chain(LABEL_SHIFTS).flat_map(|dt| std::iter::once(0.0).chain(LABEL_SHIFTS).map(move |da| (dt, da))).filter(|(dt, da)| dt != da);
+        for (dt, da) in together.chain(apart) {
+            let mut r = read_at(dt, da);
+            if !r.3 {
+                if let (Some(t), Some(a)) = (&r.0, &r.1) {
+                    if let Some(line) = x_misread(&t.text, &a.text) {
+                        r.2 = stats(Some(&t.text), Some(&line));
+                        r.3 = r.2 .2 && t.score >= DIGIT_MIN;
+                    }
+                }
+            }
+            if confident(&r) {
+                (total, aq, st, fits) = r;
+                break;
+            }
+        }
+    }
     let (score, second) = (aq.as_ref().map(|a| a.score), aq.as_ref().map(|a| a.second));
     fields.insert(format!("tank{i}.activity"), FieldRead { sure: fits, guess: Some(num(st.0)), score, second });
     fields.insert(format!("tank{i}.quantity"), FieldRead { sure: fits, guess: Some(num(st.1)), score, second });

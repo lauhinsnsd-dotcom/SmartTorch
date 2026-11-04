@@ -19,3 +19,9 @@ __pycache__/
 /train-runs/
 # Python tools for training (decision trees), kept out of the repo
 /train/
+
+# Chinese edition: the built overlay, its debug pictures and the share zip
+/vorax-overlay.exe
+/frames/
+/share/
+/vorax-zh-share.zip

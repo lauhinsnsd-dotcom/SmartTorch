@@ -4,3 +4,6 @@
 # a game log as the game writes it (CRLF), kept byte for byte
 fixtures/vorax-log-excerpt.txt -text
 *.ico binary
+# Windows batch files with Windows line endings (cmd misreads some LF-only scripts)
+*.bat text eol=crlf
+*.ttf binary

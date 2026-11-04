@@ -170,7 +170,7 @@ pub fn run(args: &[String]) {
             return;
         }
     };
-    let opts = worker::Options { log: arg::<String>(args, "--log").map(PathBuf::from), shelley: settings.shelley, ocr: settings.ocr, frames: arg::<String>(args, "--frames").map(PathBuf::from) };
+    let opts = worker::Options { log: arg::<String>(args, "--log").map(PathBuf::from), shelley: settings.shelley, ocr: settings.ocr, ocr_lang: arg::<String>(args, "--ocr-lang"), frames: arg::<String>(args, "--frames").map(PathBuf::from) };
     waker.wake();
     // a newer release on GitHub: offered in the tray menu
     let (check_tx, check_waker) = (to_ui.clone(), waker);

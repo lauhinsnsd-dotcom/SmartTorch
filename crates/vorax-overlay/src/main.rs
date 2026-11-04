@@ -3,7 +3,8 @@
 //!
 //!   vorax-overlay                         run over the game (Windows)
 //!   vorax-overlay --preview in.png out.png   draw the overlay onto a saved screenshot
-//! Options: --shelley N (Intern Shelley level, 1-6; default 6), --log <UE_game.log>, --no-ocr, --console
+//! Options: --shelley N (Intern Shelley level, 1-6; default 6), --log <UE_game.log>, --no-ocr, --console,
+//!   --ocr-lang zh (read a Chinese client's card titles; or a tag such as zh-Hant-TW)
 
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 

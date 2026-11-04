@@ -7,7 +7,7 @@ use vorax_scan::layout::layout_at;
 use vorax_scan::live::carried_round;
 use vorax_scan::pixels::Img;
 use vorax_scan::reading::{Problem, Reading};
-use vorax_scan::titles::{pictures, read_titles};
+use vorax_scan::titles::{pictures_in, read_titles_in, Script};
 use vorax_scan::track::{track_instruments, InstrumentTracker};
 use vorax_scan::window::{crop_to, windowed_game};
 use vorax_scan::{scan, scan_data};
@@ -47,6 +47,8 @@ pub struct Pipeline {
     /// the last read was the Vorax screen opened again on the game under way (Escape and back, to skip long
     /// animations), not a new game
     pub resumed: bool,
+    /// the writing the card titles are read in (a Chinese client's: matched to the cards' Chinese names)
+    pub script: Script,
 }
 
 /// Whether the screen opening is the game under way going on rather than a new one, from the round of the board
@@ -67,7 +69,7 @@ pub fn shelley_rerolls(level: i32) -> i32 {
 
 impl Pipeline {
     pub fn new(shelley: i32) -> Pipeline {
-        Pipeline { tracker: InstrumentTracker::default(), shelley, instrument_refreshes: None, last: None, protocols: false, resumed: false }
+        Pipeline { tracker: InstrumentTracker::default(), shelley, instrument_refreshes: None, last: None, protocols: false, resumed: false, script: Script::Latin }
     }
 
     /// The board's instrument rerolls: as read on an instrument offer, else carried from the last one this game,
@@ -96,7 +98,7 @@ impl Pipeline {
         }
         self.fill_rerolls(&mut reading);
         let advice = advise_plan(&reading.state, Some(FUTURES), true);
-        Some((plan_for(&advice, &reading.state, &reading, &layout_at(w, h, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0))), w, h))
+        Some((plan_for(&advice, &reading.state, &reading, &layout_at(w, h, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0)), self.script == Script::Han), w, h))
     }
 
     /// `frame`: the captured game window; `trigger`: "screen" when the log says a new game opened.
@@ -109,17 +111,23 @@ impl Pipeline {
             None => frame.clone(),
         };
         // with a text reader: the cards by their printed names, by their pictures only where a name doesn't settle
-        let raw = match ocr {
+        let mut raw = match ocr {
             Some(read) => {
                 let names = scan(&img, data, false);
                 let (dy, ui) = (names.hand_dy.unwrap_or(0.0), names.ui());
-                let pics = |phase: &str, size: usize, slots: &[usize]| pictures(&img, data, phase, size, slots, dy, ui);
-                read_titles(&img, names, data, read, Some(&pics))
+                let script = self.script;
+                let pics = |phase: &str, size: usize, slots: &[usize]| pictures_in(&img, data, phase, size, slots, dy, ui, script);
+                read_titles_in(&img, names, data, read, Some(&pics), script)
             }
             None => scan(&img, data, true),
         };
         if raw.has(|p| matches!(p, Problem::Animating)) {
             return Outcome::Animating;
+        }
+        // not in upstream: rounds 11-13 are always the Surgical Protocols; one read for sure there whose cards weren't
+        // made out yet (still flying in) is one, not a potion board with an empty hand ("Board not fully read")
+        if raw.fields.get("round").is_some_and(|f| f.sure) && raw.state.round.is_some_and(|r| r >= 11) && raw.state.phase != vorax::advisor::ScreenPhase::Protocol && raw.state.hand.is_empty() {
+            raw.state.phase = vorax::advisor::ScreenPhase::Protocol;
         }
         if raw.has(|p| matches!(p, Problem::NotFound)) {
             return Outcome::NotGame;
@@ -159,7 +167,7 @@ impl Pipeline {
         self.fill_rerolls(&mut reading);
         let read_ms = t.elapsed().as_secs_f64() * 1000.0;
         let advice = advise_plan(&reading.state, Some(FUTURES), true);
-        let plan = plan_for(&advice, &reading.state, &reading, &layout_at(img.width, img.height, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0)));
+        let plan = plan_for(&advice, &reading.state, &reading, &layout_at(img.width, img.height, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0)), self.script == Script::Han);
         self.last = Some((reading.clone(), img.width, img.height));
         Outcome::Advice { reading: Box::new(reading), advice: Box::new(advice), plan, read_ms }
     }
