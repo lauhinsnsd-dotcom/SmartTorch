@@ -331,6 +331,25 @@ pub fn goal_score(ua: i64) -> f64 {
     ua.min(TARGET) as f64
 }
 
+/// Not in upstream: the aggressive mode (the overlay's 衝分): the futures of potions and instruments judged by their
+/// plain final score, not counted up to TARGET, so a board well on its way keeps building instead of settling for
+/// 840,000. Off by default (upstream's advice, and its tests, unchanged).
+pub static MEAN_GOAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether the aggressive mode is on (MEAN_GOAL).
+pub fn mean_goal() -> bool {
+    MEAN_GOAL.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// A future's final score as the advice judges it: counted up to TARGET, or plain in the aggressive mode.
+pub fn aim_score(ua: i64) -> f64 {
+    if mean_goal() {
+        ua as f64
+    } else {
+        goal_score(ua)
+    }
+}
+
 /// What an instrument choice is judged by: the score counted up to TARGET, or the plain average final score.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -546,7 +565,7 @@ pub fn potion_futures(s: &GameState, seed: u32, la: &LookAhead, opts: &[Opt], fr
     tallies(opts.len(), from, to, par, |c, k| {
         let sk = mix(seed, 9000 + k);
         let ua = ultimate_activity(&finish(&play_opt(&reseed(s, sk), &opts[c]), sk, &inner, &Picker::Value));
-        Tally { goal: goal_score(ua), reached: (ua >= TARGET) as u32, n: 1 }
+        Tally { goal: aim_score(ua), reached: (ua >= TARGET) as u32, n: 1 }
     })
 }
 

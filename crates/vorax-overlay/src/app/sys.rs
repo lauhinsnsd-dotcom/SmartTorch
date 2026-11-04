@@ -200,11 +200,14 @@ pub struct Settings {
     /// not in upstream: the words in Traditional or Simplified (zh::AUTO, TRADITIONAL, SIMPLIFIED)
     #[serde(default)]
     pub script: u8,
+    /// not in upstream: the aggressive mode (衝分): futures judged by their plain final score (vorax::bot::MEAN_GOAL)
+    #[serde(default)]
+    pub aggressive: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0 }
+        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false }
     }
 }
 

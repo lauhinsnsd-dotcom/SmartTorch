@@ -80,6 +80,8 @@ const MENU_QUIT: u32 = 13;
 const MENU_READ: u32 = 14;
 /// not in upstream: the words in Traditional or Simplified (auto, Traditional, Simplified in turn)
 const MENU_SCRIPT: u32 = 15;
+/// not in upstream: the advice's mode, upstream's (保守) or aggressive (衝分)
+const MENU_MODE: u32 = 18;
 /// Shelley levels 1-6 are MENU_SHELLEY + level
 const MENU_SHELLEY: u32 = 20;
 /// the marks' colours are MENU_ACCENT + their index in draw::ACCENTS
@@ -331,6 +333,22 @@ fn next_script(s: &mut State) {
     follow(s);
 }
 
+/// The tray's line for the advice's mode (not in upstream).
+fn mode_label() -> String {
+    if vorax::bot::mean_goal() { "模式：衝分（測試中）".into() } else { "模式：保守（原作者）".into() }
+}
+
+/// Upstream's mode and the aggressive one in turn (not in upstream), kept in the settings; the board read again so
+/// the advice shown is the new mode's.
+fn next_mode(s: &mut State) {
+    let on = !vorax::bot::mean_goal();
+    vorax::bot::MEAN_GOAL.store(on, std::sync::atomic::Ordering::Relaxed);
+    s.settings.aggressive = on;
+    s.settings.save();
+    note(if on { "mode: aggressive (衝分), futures judged by their plain final score" } else { "mode: upstream's (保守), futures counted up to 840k" });
+    let _ = s.tx.send(ToWorker::Snap);
+}
+
 /// Shows or hides what was read (not in upstream).
 fn toggle_read(s: &mut State) {
     s.show_read = !s.show_read;
@@ -387,6 +405,7 @@ fn tray_menu(hwnd: HWND) {
         rows.push(Row::Action { id: MENU_SNAP, label: "立即讀取畫面".into(), shortcut: "Ctrl+Alt+X".into() });
         rows.push(Row::Switch { id: MENU_READ, label: "顯示讀取結果（Ctrl+Alt+D）".into(), on: s.show_read });
         rows.push(Row::Action { id: MENU_SCRIPT, label: script_label(), shortcut: "切換".into() });
+        rows.push(Row::Action { id: MENU_MODE, label: mode_label(), shortcut: "切換".into() });
         rows.push(Row::Levels { base: MENU_SHELLEY, level: s.settings.shelley, hint: rerolls_hint });
         rows.push(Row::Colors { base: MENU_ACCENT, selected: s.settings.accent });
         rows.push(Row::Separator);
@@ -513,6 +532,9 @@ unsafe fn command(hwnd: HWND, id: u32) {
         }
         MENU_SCRIPT => {
             with_state(next_script);
+        }
+        MENU_MODE => {
+            with_state(next_mode);
         }
         MENU_SNAP => {
             with_state(|s| s.tx.send(ToWorker::Snap).ok());

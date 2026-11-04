@@ -261,7 +261,7 @@ pub fn play_work(w: &Work, from: u32, to: u32, par: bool) -> Vec<Tally> {
             let o: Vec<Opt> = opts.iter().map(|c| c.0).collect();
             potion_futures(s, *seed, la, &o, from, to, par)
         }
-        Work::Instrument { s, seed, choices, .. } => instrument_futures(s, *seed, choices, &Chooser::Ev(INSTRUMENT_ROLLOUT), Goal::Target, from, to, par),
+        Work::Instrument { s, seed, choices, .. } => instrument_futures(s, *seed, choices, &Chooser::Ev(INSTRUMENT_ROLLOUT), if mean_goal() { Goal::Mean } else { Goal::Target }, from, to, par),
     }
 }
 

@@ -3,7 +3,7 @@
 //!
 //!   vorax advise [screen.json] [--futures N] [--quick] [--single]   advice for a screen (stdin when no file)
 //!   vorax bench [fixtures-dir]                                      advice timings against the TypeScript's
-//!   vorax sim [--games N] [--seed0 S] [--policy value|steer|solver] whole games, score stats
+//!   vorax sim [--games N] [--seed0 S] [--policy value|steer|solver] [--mean] whole games, score stats (--mean: aggressive mode)
 //!   vorax read <screenshot.png> [--advise]                          read a screenshot of the game (and advise on it)
 //!   vorax info                                                      the data loaded (odds date, cards)
 //!   vorax train [--games N] [--check M] [--seed0 S] [--eps E] --out model.json   fit a board value on simulated games
@@ -129,6 +129,9 @@ fn sim(args: &[String]) {
     let games: u32 = arg(args, "--games").unwrap_or(100);
     let seed0: u32 = arg(args, "--seed0").unwrap_or(1_000_000);
     let policy: String = arg(args, "--policy").unwrap_or_else(|| "value".into());
+    // --mean: the aggressive mode (not in upstream): futures judged by their plain final score, not up to TARGET
+    let aggressive = args.iter().any(|a| a == "--mean");
+    MEAN_GOAL.store(aggressive, std::sync::atomic::Ordering::Relaxed);
     let (chooser, picker) = match policy.as_str() {
         // the player inside the advice's futures
         "value" => (Chooser::Ev(Policy { samples: 2, horizon: 0, roll_samples: None, steer: None, value: Some(true) }), Picker::Value),
@@ -141,7 +144,7 @@ fn sim(args: &[String]) {
             let halving = args.iter().any(|a| a == "--halving").then_some(true);
             (
                 Chooser::Plan(LookAhead { playouts: n, halving, ..advisor::LOOK_AHEAD }),
-                Picker::Board { playouts: n, rollout: Policy { samples: 4, horizon: 0, roll_samples: None, steer: None, value: Some(true) }, goal: Goal::Target, refresh_playouts: n },
+                Picker::Board { playouts: n, rollout: Policy { samples: 4, horizon: 0, roll_samples: None, steer: None, value: Some(true) }, goal: if aggressive { Goal::Mean } else { Goal::Target }, refresh_playouts: n },
             )
         }
         // a cheater that sees the real upcoming cards: the ceiling no strategy can beat
@@ -170,7 +173,8 @@ fn sim(args: &[String]) {
     let reached = scores.iter().filter(|&&s| s >= TARGET).count() as f64 / n * 100.0;
     let rainbow = scores.iter().filter(|&&s| s >= 1_120_000).count() as f64 / n * 100.0;
     println!(
-        "{policy}: {games} games in {secs:.1}s ({:.1} games/s)  mean {mean:.0}  median {}  p10 {}  p90 {}  ≥{}k {reached:.1}%  ≥1.12M {rainbow:.1}%",
+        "{policy}{}: {games} games in {secs:.1}s ({:.1} games/s)  mean {mean:.0}  median {}  p10 {}  p90 {}  ≥{}k {reached:.1}%  ≥1.12M {rainbow:.1}%",
+        if aggressive { " (mean)" } else { "" },
         n / secs,
         scores[scores.len() / 2],
         scores[(n * 0.1) as usize],

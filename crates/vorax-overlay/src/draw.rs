@@ -90,6 +90,8 @@ const ZH_READ_CARDS: &str = "卡：";
 const ZH_EMPTY: &str = "空";
 const ZH_UNKNOWN: &str = "？";
 const ZH_SEP: &str = "｜";
+const ZH_MEAN: &str = "平均";
+const ZH_TEN_THOUSAND: &str = "萬";
 const ZH_PEST: &str = "蟲";
 const ZH_AEMBERON: &str = "異";
 const ZH_BONE_SENTRY: &str = "骨";
@@ -191,6 +193,20 @@ fn pct_in(x: f64, zh: bool) -> String {
     }
 }
 
+/// An option's end as the pill's second line: its chance of 840k, and in the aggressive mode (not in upstream) the
+/// average final score it plays to too ("64% 達 840k · 平均 95 萬"), what that mode picks by.
+fn end_in(e: &vorax::advisor::End, zh: bool) -> String {
+    let p = pct_in(e.reached, zh);
+    if !vorax::bot::mean_goal() {
+        return p;
+    }
+    if zh {
+        format!("{p} · {ZH_MEAN} {:.0} {ZH_TEN_THOUSAND}", e.activity / 10_000.0)
+    } else {
+        format!("{p} · mean {:.0}k", e.activity / 1000.0)
+    }
+}
+
 /// A card's name as a Chinese client prints it (the first of its forms in names_zh.json), else as the data has it.
 fn zh_name(phase: ScreenPhase, name: &str) -> String {
     let z = &vorax_scan::scan_data().names_zh;
@@ -215,7 +231,7 @@ pub fn plan_for(advice: &Advice, screen: &ScreenState, reading: &Reading, l: &La
         Best::Refresh => {
             let r = l.refresh;
             plan.button = Some(Rect::new(r.x - 0.35 * r.w, r.y - 0.45 * r.h, r.w * 1.7, r.h * 1.9));
-            let sub = advice.refresh_end.map(|e| pct_in(e.reached, zh)).unwrap_or_default();
+            let sub = advice.refresh_end.map(|e| end_in(&e, zh)).unwrap_or_default();
             plan.pill = Some(Pill { main: if zh { ZH_REROLL.into() } else { "Reroll".into() }, sub, dim: false });
         }
         Best::Card(r) => {
@@ -240,7 +256,7 @@ pub fn plan_for(advice: &Advice, screen: &ScreenState, reading: &Reading, l: &La
             let sub = match (&advice.note, r.end) {
                 (Some(_), _) if zh => ZH_ALWAYS.into(),
                 (Some(_), _) => "always take it".into(),
-                (None, Some(e)) => pct_in(e.reached, zh),
+                (None, Some(e)) => end_in(&e, zh),
                 (None, None) => String::new(),
             };
             plan.pill = Some(Pill { main, sub, dim: false });
