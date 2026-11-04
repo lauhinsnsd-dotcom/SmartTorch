@@ -104,3 +104,13 @@ fn a_title_a_fifth_ahead_is_picked() {
     // 軟腦膜溶液 3/5 against 消化酶溶液 2/5: a fifth ahead exactly (read live at 2732x1426, round 10)
     assert_eq!(han_pick(scan_data(), "potion", "腦 溶 液").as_deref(), Some("Leptomeningeal Solution"));
 }
+
+#[test]
+fn a_longer_name_holding_more_of_the_read_is_picked() {
+    // the last character cut off (read live at 2560x1440): Brood, not the plain Xenopanacea it holds
+    assert_eq!(han_pick(scan_data(), "potion", "異 種 萬 靈 藥 : 育").as_deref(), Some("Xenopanacea: Brood"));
+    assert_eq!(han_pick(scan_data(), "potion", "異種萬靈藥：壯").as_deref(), Some("Xenopanacea: Osteotrophy"));
+    // the families' two versions still stay apart
+    assert_eq!(han_pick(scan_data(), "potion", "孿生激素"), None);
+    assert_eq!(han_pick(scan_data(), "potion", "細肢藥粉-"), None);
+}

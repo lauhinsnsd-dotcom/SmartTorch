@@ -132,12 +132,29 @@ pub fn han_pick(data: &ScanData, phase: &str, text: &str) -> Option<String> {
     scored.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
     let (name, matched, ratio) = scored.first()?.clone();
     let second = scored.get(1).map_or(0.0, |s| s.2);
+    // a longer name holding the leader and more of the read: "異種萬靈藥：育" is 異種萬靈藥：育雛, not 異種萬靈藥 (all of
+    // whose characters show too). Only when that longer name alone matches the most characters
+    let most = scored.iter().map(|s| s.1).max().unwrap_or(0);
+    let longest: Vec<&(String, usize, f64)> = scored.iter().filter(|s| s.1 == most).collect();
+    if let [(longer, m, r)] = longest.as_slice() {
+        let zh_of = |en: &str| zh_names_for(data, phase).get(en).map(|z| z.iter().map(|x| han(x, fold)).collect::<Vec<_>>()).unwrap_or_default();
+        let holds = zh_of(&name).iter().any(|a| zh_of(longer).iter().any(|b| lcs(a, b) == a.len()));
+        if *longer != name && *m > matched && *r >= 0.5 && holds {
+            return Some(longer.clone());
+        }
+    }
     // (a hair under a fifth: 3/5 - 2/5 is 0.19999999999999996 in floating point, and "腦溶液" was left unread)
     (matched >= 2 && ratio >= 0.5 && ratio - second >= 0.2 - 1e-9).then_some(name)
 }
 
 /// A title not read as any card that is one of the cards upstream's data doesn't have (names_zh.json "unsupported"):
 /// that card as printed, when at least three of its characters and half of them show in order.
+/// Whether a Chinese title read names a card of one of these kinds (settled, or picked by han_pick), or one of the
+/// cards the data doesn't have: reading it again wouldn't tell more.
+fn names_a_card(data: &ScanData, phases: &[&str], text: &str, script: Script) -> bool {
+    han_unsupported(data, text).is_some() || phases.iter().any(|p| settled(&ranked_in(data, p, text, script)) || han_pick(data, p, text).is_some())
+}
+
 pub fn han_unsupported(data: &ScanData, text: &str) -> Option<String> {
     let fold = &data.names_zh.fold;
     let t = han(text, fold);
@@ -194,7 +211,23 @@ pub fn title_crop(img: &Img, c: &CardPos, k: f64) -> Img {
 const STRIP_AREA: Rect = Rect::new(-112.0, -112.0, 224.0, 94.0);
 
 pub fn title_strip(img: &Img, c: &CardPos, k: f64) -> Img {
-    let r = Rect::new(STRIP_AREA.x * ZOOM, STRIP_AREA.y * ZOOM, STRIP_AREA.w * ZOOM, STRIP_AREA.h * ZOOM);
+    stretched(img, c, k, STRIP_AREA, 0)
+}
+
+/// The title line alone, for a second try when title_strip's read named no card: the line's band where it sits
+/// (`lift` 0) or on the card under the mouse (`lift` -30), with a white margin. Windows' reader can miss a line at
+/// the strip's edge under busy art (人蛹標本 read as nothing six times over, then fine once the card was raised).
+const LINE_AREA: Rect = Rect::new(-112.0, -60.0, 224.0, 42.0);
+pub const LINE_LIFTS: [f64; 2] = [0.0, -30.0];
+
+pub fn title_line(img: &Img, c: &CardPos, k: f64, lift: f64) -> Img {
+    stretched(img, c, k, Rect::new(LINE_AREA.x, LINE_AREA.y + lift, LINE_AREA.w, LINE_AREA.h), 24)
+}
+
+/// A part of a card, straightened and enlarged, its contrast stretched and turned dark on white, with `pad` white
+/// pixels around it.
+fn stretched(img: &Img, c: &CardPos, k: f64, area: Rect, pad: usize) -> Img {
+    let r = Rect::new(area.x * ZOOM, area.y * ZOOM, area.w * ZOOM, area.h * ZOOM);
     let p = patch(img, c.cx, c.cy, c.angle, r, k / ZOOM);
     let n = p.width * p.height;
     let g: Vec<f64> = (0..n).map(|i| 0.299 * p.data[i * 4] as f64 + 0.587 * p.data[i * 4 + 1] as f64 + 0.114 * p.data[i * 4 + 2] as f64).collect();
@@ -202,13 +235,17 @@ pub fn title_strip(img: &Img, c: &CardPos, k: f64) -> Img {
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let (lo, hi) = (sorted[n / 100], sorted[n - 1 - n / 100]);
     let span = (hi - lo).max(1.0);
-    let mut out = Img::new(p.width, p.height);
-    for i in 0..n {
-        let v = clamp_u8(255.0 - ((g[i] - lo) / span * 255.0).clamp(0.0, 255.0));
-        out.data[i * 4] = v;
-        out.data[i * 4 + 1] = v;
-        out.data[i * 4 + 2] = v;
-        out.data[i * 4 + 3] = 255;
+    let (w, h) = (p.width + 2 * pad, p.height + 2 * pad);
+    let mut out = Img::new(w, h);
+    out.data.fill(255);
+    for y in 0..p.height {
+        for x in 0..p.width {
+            let v = clamp_u8(255.0 - ((g[y * p.width + x] - lo) / span * 255.0).clamp(0.0, 255.0));
+            let o = ((y + pad) * w + x + pad) * 4;
+            out.data[o] = v;
+            out.data[o + 1] = v;
+            out.data[o + 2] = v;
+        }
     }
     out
 }
@@ -315,7 +352,23 @@ pub fn read_titles_in(img: &Img, reading: Reading, data: &ScanData, read_text: &
         PHASES.to_vec()
     };
     let size = if read > 0 { read } else { reading.hand_size.unwrap_or(3) };
-    let texts: Vec<String> = l.hand_at(size).iter().map(|c| if han_client { read_text(&title_strip(img, c, l.k)) } else { read_text(&title_crop(img, c, l.k)) }).collect();
+    let mut texts: Vec<String> = l.hand_at(size).iter().map(|c| if han_client { read_text(&title_strip(img, c, l.k)) } else { read_text(&title_crop(img, c, l.k)) }).collect();
+    // not in upstream: a Chinese title that named no card is read again from its line alone, where it sits and then
+    // raised (the card under the mouse), until one names a card
+    if han_client {
+        for (j, c) in l.hand_at(size).iter().enumerate() {
+            if names_a_card(data, &phases, &texts[j], script) {
+                continue;
+            }
+            for lift in LINE_LIFTS {
+                let t = read_text(&title_line(img, c, l.k, lift));
+                if names_a_card(data, &phases, &t, script) {
+                    texts[j] = t;
+                    break;
+                }
+            }
+        }
+    }
     let mut best: Option<(&str, Vec<Vec<(String, f64)>>, f64)> = None;
     for phase in phases {
         let slots: Vec<Vec<(String, f64)>> = texts.iter().map(|t| if han_client { ranked_in(data, phase, t, script) } else { ranked(data, phase, t) }).collect();
