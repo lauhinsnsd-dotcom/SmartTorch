@@ -60,8 +60,13 @@ fn is_han(c: char) -> bool {
     matches!(c as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF | 0x20000..=0x2FA1F)
 }
 
+/// Not in upstream: the Simplified client's title dash ("孪生激素-骨卫兵"), which a Traditional Chinese text reader
+/// returns as the character 一 ("孪生激素一骨卫"), counted as a mistake and leaving the Bone Sentry version short of a
+/// pick. Left out of names and reads alike, like punctuation (the one name with 一, 第一儀式聖水：告解, stays apart).
+const DASH: char = '一';
+
 fn han(t: &str, fold: &std::collections::HashMap<char, char>) -> Vec<char> {
-    t.chars().filter(|&c| is_han(c)).map(|c| *fold.get(&c).unwrap_or(&c)).collect()
+    t.chars().filter(|&c| is_han(c) && c != DASH).map(|c| *fold.get(&c).unwrap_or(&c)).collect()
 }
 
 /// A Chinese character tells about as much as this many letters (MIN_Q and GAP are counted in letters).

@@ -114,3 +114,14 @@ fn a_longer_name_holding_more_of_the_read_is_picked() {
     assert_eq!(han_pick(scan_data(), "potion", "孿生激素"), None);
     assert_eq!(han_pick(scan_data(), "potion", "細肢藥粉-"), None);
 }
+
+#[test]
+fn the_simplified_clients_dash_read_as_a_character_is_left_out() {
+    // the Simplified client's "孪生激素-骨卫兵", its dash read as 一 by a Traditional Chinese reader
+    let data = scan_data();
+    assert_eq!(settled("potion", "孪 生 激 素 一 骨 卫").as_deref(), Some("Twin Hormone - Bone Sentry"));
+    assert_eq!(settled("potion", "脊 髓 溶 液 一 觉 醒 者").as_deref(), Some("Spinal Solution - Agito"));
+    assert_eq!(han_pick(data, "potion", "麻 药 / 一 异 魔").as_deref(), Some("Anesthetic Tincture - Aemberon"));
+    // still not to be guessed: the family not read
+    assert_eq!(han_pick(data, "potion", "孪 生 激 素 一").as_deref(), None);
+}
