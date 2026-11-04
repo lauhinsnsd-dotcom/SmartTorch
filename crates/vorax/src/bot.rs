@@ -285,15 +285,16 @@ impl Picker {
             Picker::Value => value_pick(s),
             Picker::Board { playouts, rollout, goal, refresh_playouts } => {
                 let r = rank_instruments(s, seed, *playouts, &Chooser::Ev(*rollout), *goal, *refresh_playouts, false);
-                let mut best = 0;
-                for (i, &v) in r.offers.iter().enumerate() {
-                    if v > r.offers[best] {
-                        best = i;
-                    }
+                // the offers, then a refresh, in the advice's order (not in upstream: the aggressive mode's
+                // rainbow-first rule; upstream's order otherwise, a refresh only when strictly better)
+                let mut opts: Vec<(f64, f64)> = r.offers.iter().zip(&r.reached).map(|(&g, &p)| (g, p)).collect();
+                if let (Some(g), Some(p)) = (r.refresh, r.refresh_reached) {
+                    opts.push((g, p));
                 }
-                match r.refresh {
-                    Some(rv) if rv > r.offers[best] => Pick::Refresh,
-                    _ => Pick::Card(best),
+                match advice_order(&opts).first() {
+                    Some(&i) if i == r.offers.len() => Pick::Refresh,
+                    Some(&i) => Pick::Card(i),
+                    None => Pick::Card(0),
                 }
             }
             Picker::Oracle => {
@@ -348,6 +349,21 @@ pub fn aim_score(ua: i64) -> f64 {
     } else {
         goal_score(ua)
     }
+}
+
+/// Not in upstream: how far below the best chance of reaching TARGET an option may be and still be picked for its
+/// higher average in the aggressive mode (3 points: about the futures' noise at 1,024 each). Further below, it
+/// would trade the rainbow chest for score (seen live: 64% picked over 76% for 9 more on the average).
+pub const RAINBOW_GAP: f64 = 0.03;
+
+/// The order the advice takes options in, given each one's (goal, chance of reaching TARGET): by goal; in the
+/// aggressive mode, the options within RAINBOW_GAP of the best chance first, by goal, then the rest by goal.
+pub fn advice_order(opts: &[(f64, f64)]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..opts.len()).collect();
+    let best = opts.iter().map(|o| o.1).fold(f64::NEG_INFINITY, f64::max);
+    let near = |i: usize| !mean_goal() || opts[i].1 >= best - RAINBOW_GAP - 1e-9;
+    order.sort_by(|&a, &b| near(b).cmp(&near(a)).then(opts[b].0.partial_cmp(&opts[a].0).unwrap_or(std::cmp::Ordering::Equal)));
+    order
 }
 
 /// What an instrument choice is judged by: the score counted up to TARGET, or the plain average final score.
@@ -626,6 +642,15 @@ pub fn look_ahead(s: &GameState, seed: u32, la: &LookAhead, par: bool) -> Vec<Ah
     // options dropped early keep their estimate from fewer futures, below the ones kept
     let mut out: Vec<(u32, Ahead)> = runs.iter().map(|r| (r.t.n, Ahead { o: r.o, now: r.v, goal: mean(r), reached: r.t.reached as f64 / r.t.n as f64 })).collect();
     out.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.goal.partial_cmp(&a.1.goal).unwrap_or(std::cmp::Ordering::Equal)));
+    // not in upstream: the aggressive mode's rainbow-first rule among the options with the most futures
+    if mean_goal() {
+        let most = out.first().map_or(0, |o| o.0);
+        let k = out.iter().take_while(|o| o.0 == most).count();
+        let opts: Vec<(f64, f64)> = out[..k].iter().map(|o| (o.1.goal, o.1.reached)).collect();
+        let mut reordered: Vec<(u32, Ahead)> = advice_order(&opts).into_iter().map(|i| out[i]).collect();
+        reordered.extend_from_slice(&out[k..]);
+        out = reordered;
+    }
     out.into_iter().map(|(_, a)| a).collect()
 }
 

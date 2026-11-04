@@ -329,6 +329,15 @@ pub fn conclude(work: &Work, x: &ScreenState, unknown: Vec<String>, t0: Instant,
             // options dropped early by halving (fewer futures) rank below the ones kept
             let mut ahead: Vec<(Opt, f64, f64, u32)> = opts.iter().zip(tallies).map(|(c, t)| (c.0, mean(t), reached(t), t.n)).collect();
             ahead.sort_by(|a, b| b.3.cmp(&a.3).then(b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)));
+            // not in upstream: the aggressive mode's rainbow-first rule among the options with the most futures
+            if mean_goal() {
+                let most = ahead.first().map_or(0, |a| a.3);
+                let k = ahead.iter().take_while(|a| a.3 == most).count();
+                let opts: Vec<(f64, f64)> = ahead[..k].iter().map(|a| (a.1, a.2)).collect();
+                let mut reordered: Vec<(Opt, f64, f64, u32)> = advice_order(&opts).into_iter().map(|i| ahead[i]).collect();
+                reordered.extend_from_slice(&ahead[k..]);
+                ahead = reordered;
+            }
             let reroll = ahead.iter().position(|a| a.0 == Opt::Refresh);
             let refresh_end = reroll.map(|i| End { activity: ahead[i].1, reached: ahead[i].2 });
             let ranked: Vec<Ranked> = ahead
@@ -358,6 +367,19 @@ pub fn conclude(work: &Work, x: &ScreenState, unknown: Vec<String>, t0: Instant,
                 .collect();
             ranking.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
             let refresh_end = choices.iter().position(|c| *c == Pick::Refresh).map(|r| End { activity: mean(&tallies[r]), reached: reached(&tallies[r]) });
+            // not in upstream: the aggressive mode's rainbow-first rule over the offers and the refresh
+            if mean_goal() {
+                let mut opts: Vec<(f64, f64)> = ranking.iter().map(|r| r.end.map_or((r.value, 0.0), |e| (e.activity, e.reached))).collect();
+                if let Some(e) = refresh_end {
+                    opts.push((e.activity, e.reached));
+                }
+                let order = advice_order(&opts);
+                let refresh_first = refresh_end.is_some() && order.first() == Some(&ranking.len());
+                let mut cards: Vec<Ranked> = order.iter().filter(|&&i| i < ranking.len()).map(|&i| ranking[i].clone()).collect();
+                std::mem::swap(&mut ranking, &mut cards);
+                let best = if refresh_first { Best::Refresh } else { ranking.first().cloned().map_or(Best::Nothing, Best::Card) };
+                return on_screen(x, Advice { best, ranking, board: ultimate_activity(s), refresh_end, plan: false, final_: true, ms: t0.elapsed().as_millis() as u64, unknown, note: None });
+            }
             let best = match (refresh_end, ranking.first()) {
                 (Some(e), Some(top)) if e.activity > top.value => Best::Refresh,
                 (_, Some(top)) => Best::Card(top.clone()),
