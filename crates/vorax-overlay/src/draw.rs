@@ -147,6 +147,25 @@ fn read_cards(screen: &ScreenState, size: usize, at: &[usize], missed: &Missed, 
     vec![format!("{}{line}", if zh { ZH_READ_CARDS } else { "cards: " })]
 }
 
+/// Not in upstream: the refreshes left as read, beside the refresh button ("刷新 2"; "刷新 ？" when not read sure,
+/// which upstream counts as none left without a word: an instrument advised where a refresh was the better pick).
+fn read_refresh(screen: &ScreenState, sure: bool, l: &Layout, zh: bool) -> Option<TankMark> {
+    let left = match screen.phase {
+        ScreenPhase::Potion => screen.potion_refreshes,
+        ScreenPhase::Instrument => screen.instrument_refreshes,
+        ScreenPhase::Protocol => return None,
+    };
+    let word = if zh { ZH_REROLL } else { "Rerolls" };
+    let (text, colour) = match left {
+        Some(n) if sure => (format!("{word} {n}"), NORMAL),
+        _ => (format!("{word} {}", if zh { ZH_UNKNOWN } else { "?" }), UNREAD),
+    };
+    let (r, k) = (l.refresh, l.k);
+    // right of the button, clear of the frame drawn round it when a refresh is advised (0.35 of its width out), about
+    // level with its middle (a mark sits 6px under its rect, and is 28px tall)
+    Some(TankMark { under: Rect::new(r.x + 1.35 * r.w + 12.0 * k, r.y + r.h / 2.0 - 20.0 * k, 120.0 * k, 0.0), text, colour })
+}
+
 /// The six tanks read, each as a mark under its label.
 fn read_tanks(screen: &ScreenState, l: &Layout, missed: &Missed, zh: bool) -> Vec<TankMark> {
     (0..6)
@@ -250,6 +269,7 @@ pub fn plan_for(advice: &Advice, screen: &ScreenState, reading: &Reading, l: &La
     }
     plan.read = read_cards(screen, size, &at, &missed, zh);
     plan.read_tanks = read_tanks(screen, l, &missed, zh);
+    plan.read_tanks.extend(read_refresh(screen, reading.fields.get("refreshes").is_some_and(|f| f.sure), l, zh));
     if screen.phase == ScreenPhase::Protocol {
         plan = Plan::default();
     }
@@ -677,6 +697,21 @@ mod zh_tests {
         assert_eq!(got, vec![("骨 15×12", RARE), ("空", EMPTY), ("異 1×36", NORMAL), ("？", UNREAD), ("空", EMPTY), ("蟲 229×1102", BOSS)]);
         // under each tank's own label, left to right
         assert!(marks.windows(2).all(|w| w[0].under.x < w[1].under.x));
+    }
+
+    #[test]
+    fn the_refreshes_read_show_beside_the_button_and_a_count_not_read_shows_as_such() {
+        let mut state: ScreenState = serde_json::from_str(r#"{"tanks":[null,null,null,null,null,null],"hand":[],"instruments":[],"phase":"instrument","round":2,"potionRefreshes":3,"instrumentRefreshes":1}"#).unwrap();
+        let l = vorax_scan::layout::layout_at(2560, 1440, 1.0);
+        let m = read_refresh(&state, true, &l, true).unwrap();
+        assert_eq!((m.text.as_str(), m.colour), ("刷新 1", NORMAL));
+        assert!(m.under.x > l.refresh.x + l.refresh.w, "right of the button");
+        state.phase = ScreenPhase::Potion;
+        assert_eq!(read_refresh(&state, true, &l, false).unwrap().text, "Rerolls 3");
+        // not read sure: upstream counts it as none left, shown as not read
+        assert_eq!(read_refresh(&state, false, &l, true).map(|m| (m.text, m.colour)), Some(("刷新 ？".to_string(), UNREAD)));
+        state.phase = ScreenPhase::Protocol;
+        assert!(read_refresh(&state, false, &l, true).is_none());
     }
 
     /// VORAX_FRAME=<png> VORAX_PILL_PNG=<dir>: that frame read (cards by their pictures) and drawn over, to look at.
