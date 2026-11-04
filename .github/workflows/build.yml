@@ -1,15 +1,18 @@
 # Builds the Chinese edition on Windows on every push: the tests first, then vorax-overlay.exe, packed with its
-# start files and licences as a zip to download from the run's page (Actions → the run → Artifacts).
+# start files and licences as a zip to download from the run's page (Actions → the run → Artifacts). A version
+# tag (v0.2.2-zh.1 and so on) also puts that zip on a release of its own, with its SHA-256.
 name: build
 
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # write: a tag's run creates its release
+  contents: write
 
 jobs:
   windows:
@@ -50,3 +53,28 @@ jobs:
           name: vorax-zh-${{ github.sha }}
           path: vorax-zh/
           if-no-files-found: error
+
+      - name: Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zip = "vorax-zh-$tag.zip"
+          Compress-Archive -Path vorax-zh\* -DestinationPath $zip
+          $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $exeHash = (Get-FileHash vorax-zh\vorax-overlay.exe -Algorithm SHA256).Hash.ToLower()
+          $notes = @"
+          火炬之光：無限「渴癮症」輔助器中文版（非官方）。下載下方的 $zip，解壓縮後依照 README-zh.txt 使用。
+          更新內容與兩種模式的比較請看專案首頁的 README。
+
+          第一次執行時 Windows 可能顯示「Windows 已保護您的電腦」（程式沒有數位簽章），請點「其他資訊」→「仍要執行」。
+
+          SHA-256
+          - ${zip}: $zipHash
+          - vorax-overlay.exe: $exeHash
+          "@
+          $notes = ($notes -split "`n" | ForEach-Object { $_ -replace '^          ', '' }) -join "`n"
+          Set-Content -Path notes.md -Value $notes -Encoding utf8
+          gh release create $tag $zip --title "$tag" --notes-file notes.md
