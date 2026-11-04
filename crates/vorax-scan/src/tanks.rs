@@ -12,6 +12,9 @@ use vorax::types::{Archetype, Rarity};
 
 const NAME_MIN: f64 = 105.0;
 const DIGIT_MIN: f64 = 0.75;
+/// not in upstream: the least a read may score when both its lines, as read, multiply up to a total of three digits
+/// or more (exact products of that size don't come out of noise)
+const DIGIT_MIN_EXACT: f64 = 0.70;
 const MAX_STAT: f64 = 1_000_000.0;
 /// Where else a label's lines are looked for (reference pixels), nearest first.
 const LABEL_SHIFTS: [f64; 10] = [3.0, -3.0, 6.0, -6.0, 9.0, -9.0, 12.0, -12.0, 15.0, -15.0];
@@ -223,6 +226,9 @@ fn readings(alts: &[Vec<char>]) -> Vec<(String, usize)> {
     for choices in alts {
         out = out.iter().flat_map(|(t, r)| choices.iter().enumerate().map(move |(i, c)| (format!("{t}{c}"), r + i))).collect();
     }
+    // a number the game prints never starts with a 0: with a candle's flame read as a glyph before 5x24 ("75x24"),
+    // "15x08" multiplied up to the total (120) and stood for 15x8
+    out.retain(|(t, _)| !t.split('x').any(|n| n.len() > 1 && n.starts_with('0')));
     out
 }
 
@@ -358,7 +364,12 @@ pub fn read_tank(img: &Img, g: &[f32], l: &Layout, i: usize, data: &ScanData, gl
         if let Some((t, a)) = &fix {
             st = stats(Some(t), Some(a));
         }
-        let fits = st.2 && total.is_some() && aq.is_some() && (fix.is_some() || (total.as_ref().unwrap().score >= DIGIT_MIN && aq.as_ref().unwrap().score >= DIGIT_MIN));
+        let (ts, qs) = (total.as_ref().map_or(0.0, |t| t.score), aq.as_ref().map_or(0.0, |a| a.score));
+        // not in upstream: both lines read as they are, multiplying up to a total of three digits or more, are
+        // taken from a little lower (3840x2160 draws the digits a little unlike the references: 8436 and 38x222,
+        // exactly, scored 0.744 and the tank was shown as not read on every look)
+        let exact = glow && fix.is_none() && total.as_ref().is_some_and(|t| t.text.len() >= 3) && ts >= DIGIT_MIN_EXACT && qs >= DIGIT_MIN_EXACT;
+        let fits = st.2 && total.is_some() && aq.is_some() && (fix.is_some() || (ts >= DIGIT_MIN && qs >= DIGIT_MIN) || exact);
         (total, aq, st, fits)
     };
     // not in upstream: the Simplified Chinese client draws the Activity x Quantity line's "1" with a longer flag,
