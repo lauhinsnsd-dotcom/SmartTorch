@@ -31,9 +31,19 @@ pub struct Plan {
     pub button: Option<Rect>,
     /// the glass of each tank to target
     pub tanks: Vec<Rect>,
-    /// not in upstream: what was read, a line for the cards and one for the tanks, for the player to check against
-    /// the game (Ctrl+Alt+D hides it)
+    /// not in upstream: what was read, for the player to check against the game (Ctrl+Alt+D hides it): a line for
+    /// the cards under the pill, and a mark under each tank's label
     pub read: Vec<String>,
+    pub read_tanks: Vec<TankMark>,
+}
+
+/// What was read of one tank, shown under its label: "骨 15×12" in its rarity's colour (not in upstream).
+#[derive(Clone, Debug)]
+pub struct TankMark {
+    /// the tank's Activity × Quantity line, in screen pixels: the mark goes under it
+    pub under: Rect,
+    pub text: String,
+    pub colour: (u8, u8, u8),
 }
 
 impl Plan {
@@ -77,62 +87,51 @@ const ZH_NOT_READ: &str = "未讀到：";
 const ZH_NOT_FULLY: &str = "畫面未完全讀到";
 const ZH_NOT_IN_DATA: &str = "不在資料內，請自行判斷";
 const ZH_READ_CARDS: &str = "卡：";
-const ZH_READ_TANKS: &str = "槽：";
 const ZH_EMPTY: &str = "空";
 const ZH_UNKNOWN: &str = "？";
 const ZH_SEP: &str = "｜";
-const ZH_NORMAL: &str = "普通";
-const ZH_MAGIC: &str = "魔法";
-const ZH_RARE: &str = "稀有";
-const ZH_BOSS: &str = "首領";
-const ZH_PEST: &str = "蠱蟲";
-const ZH_AEMBERON: &str = "異魔";
-const ZH_BONE_SENTRY: &str = "骨衛兵";
-const ZH_AGITO: &str = "覺醒者";
+const ZH_PEST: &str = "蟲";
+const ZH_AEMBERON: &str = "異";
+const ZH_BONE_SENTRY: &str = "骨";
+const ZH_AGITO: &str = "覺";
 #[cfg(test)]
-const ZH_ALL: [&str; 22] = [
-    ZH_REROLL, ZH_ALWAYS, ZH_REACH, ZH_TANK, ZH_CARD, ZH_NOT_READ, ZH_NOT_FULLY, ZH_NOT_IN_DATA, ZH_READ_CARDS, ZH_READ_TANKS, ZH_EMPTY,
-    ZH_UNKNOWN, ZH_SEP, ZH_NORMAL, ZH_MAGIC, ZH_RARE, ZH_BOSS, ZH_PEST, ZH_AEMBERON, ZH_BONE_SENTRY, ZH_AGITO, "×",
+const ZH_ALL: [&str; 17] = [
+    ZH_REROLL, ZH_ALWAYS, ZH_REACH, ZH_TANK, ZH_CARD, ZH_NOT_READ, ZH_NOT_FULLY, ZH_NOT_IN_DATA, ZH_READ_CARDS, ZH_EMPTY, ZH_UNKNOWN,
+    ZH_SEP, ZH_PEST, ZH_AEMBERON, ZH_BONE_SENTRY, ZH_AGITO, "×",
 ];
 
-/// A monster as the read line shows it: "稀有骨衛兵 15×12" ("rare Bone Sentry 15×12").
-fn monster_text(m: &vorax::advisor::ScreenMonster, zh: bool) -> String {
+/// The marks' colours: a rarity's as the game colours its names, and an empty tank's and an unread one's.
+const NORMAL: (u8, u8, u8) = (236, 232, 228);
+const MAGIC: (u8, u8, u8) = (110, 170, 255);
+const RARE: (u8, u8, u8) = (255, 200, 90);
+const BOSS: (u8, u8, u8) = (255, 95, 85);
+const EMPTY: (u8, u8, u8) = (150, 144, 144);
+const UNREAD: (u8, u8, u8) = (255, 150, 60);
+
+/// A monster as its mark shows it: its kind in one word ("骨") and Activity × Quantity, in its rarity's colour.
+fn monster_mark(m: &vorax::advisor::ScreenMonster, zh: bool) -> (String, (u8, u8, u8)) {
     use vorax::types::{Archetype, Rarity};
-    let (r, a) = match (m.rarity, m.archetype, zh) {
-        (r, a, true) => (
-            match r {
-                Rarity::Normal => ZH_NORMAL,
-                Rarity::Magic => ZH_MAGIC,
-                Rarity::Rare => ZH_RARE,
-                Rarity::Boss => ZH_BOSS,
-            },
-            match a {
-                Archetype::Pest => ZH_PEST,
-                Archetype::Aemberon => ZH_AEMBERON,
-                Archetype::BoneSentry => ZH_BONE_SENTRY,
-                Archetype::Agito => ZH_AGITO,
-            },
-        ),
-        (r, a, false) => (
-            match r {
-                Rarity::Normal => "normal ",
-                Rarity::Magic => "magic ",
-                Rarity::Rare => "rare ",
-                Rarity::Boss => "boss ",
-            },
-            match a {
-                Archetype::Pest => "Pest",
-                Archetype::Aemberon => "Aemberon",
-                Archetype::BoneSentry => "Bone Sentry",
-                Archetype::Agito => "Agito",
-            },
-        ),
+    let kind = match (m.archetype, zh) {
+        (Archetype::Pest, true) => ZH_PEST,
+        (Archetype::Aemberon, true) => ZH_AEMBERON,
+        (Archetype::BoneSentry, true) => ZH_BONE_SENTRY,
+        (Archetype::Agito, true) => ZH_AGITO,
+        (Archetype::Pest, false) => "Pest",
+        (Archetype::Aemberon, false) => "Aemb",
+        (Archetype::BoneSentry, false) => "Bone",
+        (Archetype::Agito, false) => "Agito",
     };
-    format!("{r}{a} {}×{}", m.activity, m.quantity)
+    let colour = match m.rarity {
+        Rarity::Normal => NORMAL,
+        Rarity::Magic => MAGIC,
+        Rarity::Rare => RARE,
+        Rarity::Boss => BOSS,
+    };
+    (format!("{kind} {}×{}", m.activity, m.quantity), colour)
 }
 
-/// What was read, as two lines: the cards in hand from the left ("?" for one not read) and the six tanks.
-fn read_lines(screen: &ScreenState, size: usize, at: &[usize], missed: &Missed, zh: bool) -> Vec<String> {
+/// The cards read, as a line: the hand from the left ("?" for one not read).
+fn read_cards(screen: &ScreenState, size: usize, at: &[usize], missed: &Missed, zh: bool) -> Vec<String> {
     let unknown = if zh { ZH_UNKNOWN } else { "?" };
     let sep = if zh { ZH_SEP } else { " | " };
     let mut cards: Vec<String> = vec![unknown.to_string(); size];
@@ -146,26 +145,28 @@ fn read_lines(screen: &ScreenState, size: usize, at: &[usize], missed: &Missed, 
             *c = name.clone();
         }
     }
-    let tanks: Vec<String> = (0..6)
+    if size == 0 {
+        return vec![];
+    }
+    let line = cards.iter().enumerate().map(|(i, t)| format!("{} {t}", i + 1)).collect::<Vec<_>>().join(sep);
+    vec![format!("{}{line}", if zh { ZH_READ_CARDS } else { "cards: " })]
+}
+
+/// The six tanks read, each as a mark under its label.
+fn read_tanks(screen: &ScreenState, l: &Layout, missed: &Missed, zh: bool) -> Vec<TankMark> {
+    (0..6)
         .map(|i| {
-            if missed.tanks.contains(&i) {
-                unknown.to_string()
+            let (text, colour) = if missed.tanks.contains(&i) {
+                ((if zh { ZH_UNKNOWN } else { "?" }).to_string(), UNREAD)
             } else {
                 match screen.tanks.get(i).and_then(|t| t.as_ref()) {
-                    Some(m) => monster_text(m, zh),
-                    None if zh => ZH_EMPTY.to_string(),
-                    None => "empty".to_string(),
+                    Some(m) => monster_mark(m, zh),
+                    None => ((if zh { ZH_EMPTY } else { "empty" }).to_string(), EMPTY),
                 }
-            }
+            };
+            TankMark { under: l.aq_band[i], text, colour }
         })
-        .collect();
-    let numbered = |v: &[String]| v.iter().enumerate().map(|(i, t)| format!("{} {t}", i + 1)).collect::<Vec<_>>().join(sep);
-    let mut lines = Vec::new();
-    if size > 0 {
-        lines.push(format!("{}{}", if zh { ZH_READ_CARDS } else { "cards: " }, numbered(&cards)));
-    }
-    lines.push(format!("{}{}", if zh { ZH_READ_TANKS } else { "tanks: " }, numbered(&tanks)));
-    lines
+        .collect()
 }
 
 fn pct_in(x: f64, zh: bool) -> String {
@@ -252,7 +253,8 @@ pub fn plan_for(advice: &Advice, screen: &ScreenState, reading: &Reading, l: &La
             None => plan.pill = Some(Pill { main: if zh { ZH_NOT_FULLY.into() } else { "Board not fully read".into() }, sub: warn, dim: false }),
         }
     }
-    plan.read = read_lines(screen, size, &at, &missed, zh);
+    plan.read = read_cards(screen, size, &at, &missed, zh);
+    plan.read_tanks = read_tanks(screen, l, &missed, zh);
     if screen.phase == ScreenPhase::Protocol {
         plan = Plan::default();
     }
@@ -532,6 +534,23 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
             text(&mut pm, regular, t, px_, bx + padx, by + pady + line_h * (k as f32 + 0.75), (214, 206, 202), alpha);
         }
     }
+    // not in upstream: each tank as read, under its label, in its rarity's colour
+    if !plan.read_tanks.is_empty() {
+        let texts: Vec<&str> = plan.read_tanks.iter().map(|m| m.text.as_str()).collect();
+        let (bold, _) = fonts.for_pill(&texts);
+        let px_ = 19.0 * s;
+        let (padx, bh) = (8.0 * s, 28.0 * s);
+        let alpha = if plan.pill.as_ref().is_some_and(|p| p.dim) { 0.55 } else { 1.0 };
+        for m in &plan.read_tanks {
+            let tw = measure(bold, &m.text, px_);
+            let bw = tw + 2.0 * padx;
+            let (cx, top) = ((m.under.x + m.under.w / 2.0) as f32, (m.under.y + m.under.h) as f32 + 6.0 * s);
+            if let Some(p) = rounded(cx - bw / 2.0, top, bw, bh, 7.0 * s) {
+                pm.fill_path(&p, &paint(rgba(10, 8, 10, 0.85 * alpha)), FillRule::Winding, Transform::identity(), None);
+            }
+            text(&mut pm, bold, &m.text, px_, cx - tw / 2.0, top + bh * 0.72, m.colour, alpha);
+        }
+    }
     pm
 }
 
@@ -607,13 +626,16 @@ mod zh_tests {
     }
 
     #[test]
-    fn what_was_read_is_two_lines_from_the_left() {
-        let state: ScreenState = serde_json::from_str(r#"{"tanks":[{"archetype":"boneSentry","rarity":"rare","activity":15,"quantity":12},null,{"archetype":"aemberon","rarity":"normal","activity":1,"quantity":36},null,null,{"archetype":"boneSentry","rarity":"normal","activity":1,"quantity":109}],"hand":["Hollow Spinal Solution","Eggshell Powder"],"instruments":[],"phase":"potion","round":2}"#).unwrap();
+    fn what_was_read_is_the_cards_in_a_line_and_a_mark_per_tank() {
+        let state: ScreenState = serde_json::from_str(r#"{"tanks":[{"archetype":"boneSentry","rarity":"rare","activity":15,"quantity":12},null,{"archetype":"aemberon","rarity":"normal","activity":1,"quantity":36},null,null,{"archetype":"pest","rarity":"boss","activity":229,"quantity":1102}],"hand":["Hollow Spinal Solution","Eggshell Powder"],"instruments":[],"phase":"potion","round":2}"#).unwrap();
         let missed = Missed { cards: vec![1], tanks: vec![3], unsupported: vec![] };
-        let lines = read_lines(&state, 3, &[0, 2], &missed, true);
-        assert_eq!(lines, vec!["卡：1 空心脊髓溶液｜2 ？｜3 卵殼藥粉".to_string(), "槽：1 稀有骨衛兵 15×12｜2 空｜3 普通異魔 1×36｜4 ？｜5 空｜6 普通骨衛兵 1×109".to_string()]);
-        let en = read_lines(&state, 3, &[0, 2], &missed, false);
-        assert_eq!(en[1], "tanks: 1 rare Bone Sentry 15×12 | 2 empty | 3 normal Aemberon 1×36 | 4 ? | 5 empty | 6 normal Bone Sentry 1×109");
+        assert_eq!(read_cards(&state, 3, &[0, 2], &missed, true), vec!["卡：1 空心脊髓溶液｜2 ？｜3 卵殼藥粉".to_string()]);
+        let l = vorax_scan::layout::layout_at(2560, 1440, 1.0);
+        let marks = read_tanks(&state, &l, &missed, true);
+        let got: Vec<(&str, (u8, u8, u8))> = marks.iter().map(|m| (m.text.as_str(), m.colour)).collect();
+        assert_eq!(got, vec![("骨 15×12", RARE), ("空", EMPTY), ("異 1×36", NORMAL), ("？", UNREAD), ("空", EMPTY), ("蟲 229×1102", BOSS)]);
+        // under each tank's own label, left to right
+        assert!(marks.windows(2).all(|w| w[0].under.x < w[1].under.x));
     }
 
     /// VORAX_FRAME=<png> VORAX_PILL_PNG=<dir>: that frame read (cards by their pictures) and drawn over, to look at.

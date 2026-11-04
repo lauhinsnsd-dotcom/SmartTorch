@@ -564,6 +564,13 @@ fn draw(s: &State, (x, y, w, h): (i32, i32, i32, i32)) {
     let mut p = if s.busy { plan.dimmed() } else { plan.clone() };
     if !s.show_read {
         p.read.clear();
+        p.read_tanks.clear();
+    }
+    for m in p.read_tanks.iter_mut() {
+        m.under.x *= sx;
+        m.under.y *= sy;
+        m.under.w *= sx;
+        m.under.h *= sy;
     }
     if let Some((c, cw, ch)) = &mut p.card {
         c.cx *= sx;
