@@ -137,6 +137,9 @@ pub struct Data {
     pub instrument_offer: [f64; 256],
     pub spawn_rarity: [f64; 4],
     pub model: Option<ValueModel>,
+    /// not in upstream: the aggressive mode's board value (boardValueMean.json), trained on the plain final score;
+    /// None leaves that mode on `model`
+    pub model_mean: Option<ValueModel>,
     /// a tree model's trees packed for walking
     pub forest: Option<Forest>,
     /// position of each instrument in upstream's list (the board value's feature order)
@@ -205,6 +208,7 @@ struct RawInstrumentOffer {
 /// The game data this build was compiled with (game.json).
 const EMBEDDED_GAME: &str = include_str!("../../../data/game.json");
 const EMBEDDED_VALUE: &str = include_str!("../../../data/boardValue.json");
+const EMBEDDED_VALUE_MEAN: &str = include_str!("../../../data/boardValueMean.json");
 
 impl Data {
     /// The data this build was compiled with.
@@ -332,6 +336,10 @@ impl Data {
                 _ => None,
             },
             model,
+            model_mean: match EMBEDDED_VALUE_MEAN.trim() {
+                "" | "null" => None,
+                s => Some(serde_json::from_str::<ValueModel>(s).map_err(|e| format!("boardValueMean.json: {e}"))?),
+            },
             periodic,
         })
     }

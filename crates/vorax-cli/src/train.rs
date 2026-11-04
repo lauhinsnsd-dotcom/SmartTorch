@@ -107,7 +107,9 @@ fn play(seed: u32, eps: f64, smart: bool) -> Game {
             s = play_opt(&s, &o);
         }
     }
-    Game { boards, y: goal_score(ultimate_activity(&s)) / 1e6 }
+    // not in upstream: the aggressive mode's board value learns the plain final score (vorax train --mean)
+    let ua = ultimate_activity(&s);
+    Game { boards, y: if vorax::bot::mean_goal() { ua as f64 } else { goal_score(ua) } / 1e6 }
 }
 
 /// The sums over games `from..to`, per round; games are played on every core, a batch at a time.

@@ -15,6 +15,16 @@ const FEATURE_CAP: i64 = 950_000;
 /// Predicted final score counted up to 840,000; once the game is over, the score itself (up to 840,000).
 pub fn board_value(s: &GameState) -> f64 {
     let d = data();
+    // not in upstream: the aggressive mode's own board value, not counted up to TARGET
+    if crate::bot::mean_goal() {
+        if let Some(ValueModel::Rounds { rounds }) = &d.model_mean {
+            if s.phase == Phase::GameOver {
+                return ultimate_activity(s) as f64;
+            }
+            let at = (s.round.max(1) as usize).min(rounds.len()) - 1;
+            return (weighted(d, s, &rounds[at]) * 1e6).max(0.0);
+        }
+    }
     let Some(model) = &d.model else { return ultimate_activity(s) as f64 };
     if s.phase == Phase::GameOver {
         return ultimate_activity(s).min(TARGET) as f64;

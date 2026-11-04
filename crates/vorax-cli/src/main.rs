@@ -51,6 +51,8 @@ fn main() {
                 return train::rows(seed0, seed0 + games, arg(a, "--eps").unwrap_or(0.1), vorax::data().model.is_some(), &path);
             }
             let out: String = arg(a, "--out").unwrap_or_else(|| fail("train: --out model.json (or --rows boards.bin)"));
+            // --mean: the aggressive mode's board value, learning the plain final score
+            MEAN_GOAL.store(a.iter().any(|x| x == "--mean"), std::sync::atomic::Ordering::Relaxed);
             train::train(games, arg(a, "--check").unwrap_or((games / 10).max(1000)), arg(a, "--seed0").unwrap_or(5_000_000), arg(a, "--eps").unwrap_or(0.1), vorax::data().model.is_some(), &out)
         }
         "gate" => match &args[1..] {
