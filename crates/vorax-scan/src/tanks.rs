@@ -2,6 +2,7 @@
 //! from the icon above it, and Activity × Quantity, which must multiply to the total shown above it.
 
 use crate::data::ScanData;
+use indexmap::IndexMap;
 use crate::layout::Layout;
 use crate::pixels::{hsv, Img, Rect};
 use crate::reading::{FieldRead, Fields, TankDebug};
@@ -346,8 +347,9 @@ fn num(x: f64) -> String {
 /// `glow`: an empty tank's red glow taken for empty (not in upstream).
 pub fn read_tank(img: &Img, g: &[f32], l: &Layout, i: usize, data: &ScanData, glow: bool) -> TankRead {
     let mut fields = Fields::new();
-    let refs = &data.digits["label"];
-    let read_at = |dt: f64, da: f64| {
+    let base = &data.digits["label"];
+    let zh = data.digits_with_zh("label");
+    let read_with = |dt: f64, da: f64, refs: &IndexMap<String, Vec<Vec<f64>>>| {
         let down = |r: &Rect, dy: f64| Rect::new(r.x, r.y + dy * l.k, r.w, r.h);
         let total = read_text(img, g, &down(&l.total_band[i], dt), TextKind::Label, refs);
         let aq = read_text(img, g, &down(&l.aq_band[i], da), TextKind::Label, refs);
@@ -358,6 +360,17 @@ pub fn read_tank(img: &Img, g: &[f32], l: &Layout, i: usize, data: &ScanData, gl
         }
         let fits = st.2 && total.is_some() && aq.is_some() && (fix.is_some() || (total.as_ref().unwrap().score >= DIGIT_MIN && aq.as_ref().unwrap().score >= DIGIT_MIN));
         (total, aq, st, fits)
+    };
+    // not in upstream: the Simplified Chinese client draws the Activity x Quantity line's "1" with a longer flag,
+    // which the English client's references take for a "4" (1x171 as 4x474). Its glyphs are tried only when a
+    // line doesn't fit as read, so a read that fits keeps upstream's result.
+    let read_at = |dt: f64, da: f64| {
+        let r = read_with(dt, da, base);
+        if r.3 || zh.len() == base.len() && zh.values().map(Vec::len).sum::<usize>() == base.values().map(Vec::len).sum::<usize>() {
+            return r;
+        }
+        let z = read_with(dt, da, &zh);
+        if z.3 { z } else { r }
     };
     // a read found by searching around counts only when both lines read well: reconciling weak glyphs there can
     // make a line up out of noise ("4" and "4 x 1" from a label that says 31125 and 125 x 249)

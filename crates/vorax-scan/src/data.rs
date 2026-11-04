@@ -98,9 +98,12 @@ impl ScanData {
         #[derive(Deserialize)]
         struct Packed {
             round: IndexMap<String, Vec<Vec<f64>>>,
+            #[serde(default)]
+            label: IndexMap<String, Vec<Vec<f64>>>,
         }
         let p: Packed = serde_json::from_str(digits_zh).map_err(|e| format!("digits_zh.json: {e}"))?;
         self.digits_zh.insert("round".into(), p.round);
+        self.digits_zh.insert("label".into(), p.label);
         Ok(self)
     }
 
