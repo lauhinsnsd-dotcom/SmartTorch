@@ -78,6 +78,8 @@ const MENU_SNAP: u32 = 11;
 const MENU_LOG: u32 = 12;
 const MENU_QUIT: u32 = 13;
 const MENU_READ: u32 = 14;
+/// not in upstream: the words in Traditional or Simplified (auto, Traditional, Simplified in turn)
+const MENU_SCRIPT: u32 = 15;
 /// Shelley levels 1-6 are MENU_SHELLEY + level
 const MENU_SHELLEY: u32 = 20;
 /// the marks' colours are MENU_ACCENT + their index in draw::ACCENTS
@@ -158,7 +160,7 @@ pub fn create(fonts: Fonts, rx: Receiver<ToUi>, to_self: Sender<ToUi>, tx: Sende
             }
         }
         let mut nid = NOTIFYICONDATAW { cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32, hWnd: hwnd, uID: 1, uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP, uCallbackMessage: WM_TRAY, hIcon: app_icon(instance), ..Default::default() };
-        let tip: Vec<u16> = "Vorax overlay (Ctrl+Alt+V show/hide)".encode_utf16().collect();
+        let tip: Vec<u16> = "Vorax 輔助器中文版（Ctrl+Alt+V 顯示／隱藏）".encode_utf16().collect();
         nid.szTip[..tip.len()].copy_from_slice(&tip);
         let _ = Shell_NotifyIconW(NIM_ADD, &nid);
         SetTimer(hwnd, TIMER_FOLLOW, 250, None);
@@ -233,9 +235,9 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                         ToUi::UpdateFailed(e) => {
                             s.updating = None;
                             note(&format!("update failed: {e}"));
-                            let mut rows = vec![Row::Header { title: "Update failed".into(), status: format!("The overlay keeps v{}", update::current()) }];
+                            let mut rows = vec![Row::Header { title: "更新失敗".into(), status: format!("繼續使用 v{}", update::current()) }];
                             rows.push(Row::Lines(wrap(&s.fonts, &e, 6)));
-                            rows.push(Row::Buttons { primary: (MENU_LATER, "OK".into()), secondary: None });
+                            rows.push(Row::Buttons { primary: (MENU_LATER, "確定".into()), secondary: None });
                             if !super::menu::refresh(rows.clone()) {
                                 super::menu::notify(s.hwnd, rows, s.fonts.clone());
                             }
@@ -311,6 +313,24 @@ fn toggle(s: &mut State) {
     follow(s);
 }
 
+/// The tray's line for the words' writing (not in upstream): the setting, and in auto what it follows now.
+fn script_label() -> String {
+    match crate::zh::mode() {
+        crate::zh::TRADITIONAL => "文字：繁體".into(),
+        crate::zh::SIMPLIFIED => "文字：簡體".into(),
+        _ => format!("文字：自動（目前{}）", if crate::zh::simplified() { "簡體" } else { "繁體" }),
+    }
+}
+
+/// Auto, Traditional, Simplified in turn (not in upstream), kept in the settings.
+fn next_script(s: &mut State) {
+    crate::zh::set_mode((crate::zh::mode() + 1) % 3);
+    s.settings.script = crate::zh::mode();
+    s.settings.save();
+    s.placed = None;
+    follow(s);
+}
+
 /// Shows or hides what was read (not in upstream).
 fn toggle_read(s: &mut State) {
     s.show_read = !s.show_read;
@@ -331,48 +351,48 @@ unsafe fn quit(hwnd: HWND) {
 }
 
 fn rerolls_hint(level: i32) -> String {
-    let n = crate::pipeline::shelley_rerolls(level);
-    format!("{n} instrument reroll{}", if n == 1 { "" } else { "s" })
+    format!("手術用具可刷新 {} 次", crate::pipeline::shelley_rerolls(level))
 }
 
 /// Opens the tray menu (menu.rs), with the overlay's state as it is now.
 fn tray_menu(hwnd: HWND) {
     let Some((rows, fonts)) = with_state(|s| {
         let status = match &s.update {
-            Some(r) => format!("v{} · update available: v{}", update::current(), r.version),
-            None => format!("v{} · odds of {}", update::current(), vorax::data().odds),
+            Some(r) => format!("v{} · 有新版本：v{}", update::current(), r.version),
+            None => format!("v{} · 機率資料 {}", update::current(), vorax::data().odds),
         };
-        let mut rows = vec![Row::Header { title: "Vorax overlay".into(), status }];
+        let mut rows = vec![Row::Header { title: "Vorax 輔助器中文版".into(), status }];
         if let Some(r) = &s.update {
             let label = match s.updating {
-                Some(p) => format!("Updating to v{}… {:.0}%", r.version, p * 100.0),
-                None => format!("Update to v{}", r.version),
+                Some(p) => format!("正在更新到 v{}… {:.0}%", r.version, p * 100.0),
+                None => format!("更新到 v{}（原作者英文版）", r.version),
             };
-            rows.push(Row::Action { id: MENU_UPDATE, label, shortcut: "what's new".into() });
+            rows.push(Row::Action { id: MENU_UPDATE, label, shortcut: "更新內容".into() });
         }
         match s.game_log {
-            Some(GameLog::On) => rows.push(Row::Text("Game log on: boards are read by themselves".into())),
+            Some(GameLog::On) => rows.push(Row::Text("遊戲日誌已開啟：會自動讀取畫面".into())),
             Some(GameLog::Off) => {
-                rows.push(Row::Warn("Game log off: boards aren't read by themselves".into()));
-                rows.push(Row::Action { id: MENU_LOG_HELP, label: "How to turn the game's log on".into(), shortcut: String::new() });
+                rows.push(Row::Warn("遊戲日誌未開啟：不會自動讀取畫面".into()));
+                rows.push(Row::Action { id: MENU_LOG_HELP, label: "如何開啟遊戲日誌".into(), shortcut: String::new() });
             }
             Some(GameLog::Missing) => {
-                rows.push(Row::Warn("The game's log (UE_game.log) wasn't found".into()));
-                rows.push(Row::Action { id: MENU_LOG_HELP, label: "What to do".into(), shortcut: String::new() });
+                rows.push(Row::Warn("找不到遊戲日誌（UE_game.log）".into()));
+                rows.push(Row::Action { id: MENU_LOG_HELP, label: "怎麼辦".into(), shortcut: String::new() });
             }
-            Some(GameLog::Checking) => rows.push(Row::Text("Game log: checking…".into())),
-            Some(GameLog::NoGame) | None => rows.push(Row::Text("Game log: waiting for the game".into())),
+            Some(GameLog::Checking) => rows.push(Row::Text("遊戲日誌：檢查中…".into())),
+            Some(GameLog::NoGame) | None => rows.push(Row::Text("遊戲日誌：等待遊戲開啟".into())),
         }
         rows.push(Row::Separator);
-        rows.push(Row::Switch { id: MENU_TOGGLE, label: "Show overlay".into(), on: s.settings.shown });
-        rows.push(Row::Action { id: MENU_SNAP, label: "Read the board now".into(), shortcut: "Ctrl+Alt+X".into() });
-        rows.push(Row::Switch { id: MENU_READ, label: "Show what was read (Ctrl+Alt+D)".into(), on: s.show_read });
+        rows.push(Row::Switch { id: MENU_TOGGLE, label: "顯示提示（Ctrl+Alt+V）".into(), on: s.settings.shown });
+        rows.push(Row::Action { id: MENU_SNAP, label: "立即讀取畫面".into(), shortcut: "Ctrl+Alt+X".into() });
+        rows.push(Row::Switch { id: MENU_READ, label: "顯示讀取結果（Ctrl+Alt+D）".into(), on: s.show_read });
+        rows.push(Row::Action { id: MENU_SCRIPT, label: script_label(), shortcut: "切換".into() });
         rows.push(Row::Levels { base: MENU_SHELLEY, level: s.settings.shelley, hint: rerolls_hint });
         rows.push(Row::Colors { base: MENU_ACCENT, selected: s.settings.accent });
         rows.push(Row::Separator);
-        rows.push(Row::Action { id: MENU_LOG, label: "Your runs".into(), shortcut: "the log".into() });
+        rows.push(Row::Action { id: MENU_LOG, label: "對局紀錄".into(), shortcut: "查看".into() });
         rows.push(Row::Separator);
-        rows.push(Row::Action { id: MENU_QUIT, label: "Quit".into(), shortcut: "Ctrl+Alt+Q".into() });
+        rows.push(Row::Action { id: MENU_QUIT, label: "結束".into(), shortcut: "Ctrl+Alt+Q".into() });
         (rows, s.fonts.clone())
     }) else {
         return;
@@ -385,22 +405,22 @@ fn tray_menu(hwnd: HWND) {
 fn log_card(s: &State, by_tray: bool) {
     let rows = if s.game_log == Some(GameLog::Missing) {
         vec![
-            Row::Header { title: "Game log not found".into(), status: "Boards aren't read by themselves".into() },
-            Row::Text("The overlay looks for UE_game.log in the".into()),
-            Row::Text("game's Saved\\Logs folder. Start the game,".into()),
-            Row::Text("or start the overlay with --log <path>.".into()),
-            Row::Text("Meanwhile Ctrl+Alt+X reads the board.".into()),
-            Row::Buttons { primary: (MENU_LATER, "OK".into()), secondary: None },
+            Row::Header { title: "找不到遊戲日誌".into(), status: "不會自動讀取畫面".into() },
+            Row::Text("工具會在遊戲的 Saved\\Logs 資料夾".into()),
+            Row::Text("尋找 UE_game.log。請先開啟遊戲，".into()),
+            Row::Text("或檢查 start-zh.bat 裡的遊戲路徑。".into()),
+            Row::Text("在此之前，可按 Ctrl+Alt+X 讀取畫面。".into()),
+            Row::Buttons { primary: (MENU_LATER, "確定".into()), secondary: None },
         ]
     } else {
         vec![
-            Row::Header { title: "Turn the game's log on".into(), status: "Until then boards aren't read by themselves".into() },
-            Row::Text("1.  In the game, press Esc".into()),
-            Row::Text("2.  Open Account Related".into()),
-            Row::Text("3.  Click Enable Log".into()),
-            Row::Text("4.  Log out and back in".into()),
-            Row::Text("Meanwhile Ctrl+Alt+X reads the board.".into()),
-            Row::Buttons { primary: (MENU_LATER, "OK".into()), secondary: None },
+            Row::Header { title: "開啟遊戲日誌".into(), status: "開啟前不會自動讀取畫面".into() },
+            Row::Text("1.  在遊戲中按 Esc".into()),
+            Row::Text("2.  開啟「帳號相關」".into()),
+            Row::Text("3.  點「開啟日誌」".into()),
+            Row::Text("4.  登出後再登入".into()),
+            Row::Text("在此之前，可按 Ctrl+Alt+X 讀取畫面。".into()),
+            Row::Buttons { primary: (MENU_LATER, "確定".into()), secondary: None },
         ]
     };
     if by_tray {
@@ -415,8 +435,8 @@ fn update_offer(s: &State) {
     let Some(r) = &s.update else { return };
     note(&format!("update available: v{} (this is v{})", r.version, update::current()));
     let rows = vec![
-        Row::Header { title: "Update available".into(), status: format!("v{} is out · you have v{}", r.version, update::current()) },
-        Row::Buttons { primary: (MENU_UPDATE, "What's new".into()), secondary: Some((MENU_LATER, "Later".into())) },
+        Row::Header { title: "原作者有新版本".into(), status: format!("v{} 已推出 · 你目前是 v{}", r.version, update::current()) },
+        Row::Buttons { primary: (MENU_UPDATE, "更新內容".into()), secondary: Some((MENU_LATER, "稍後".into())) },
     ];
     super::menu::notify(s.hwnd, rows, s.fonts.clone());
 }
@@ -428,10 +448,12 @@ fn whats_new(s: &State) {
         return super::menu::open(s.hwnd, download_rows(s), s.fonts.clone());
     }
     let rows = vec![
-        Row::Header { title: format!("What's new in v{}", r.version), status: format!("You have v{}", update::current()) },
+        Row::Header { title: format!("v{} 更新內容（英文）", r.version), status: format!("你目前是 v{}", update::current()) },
         Row::Lines(wrap(&s.fonts, &r.notes, 18)),
-        Row::Action { id: MENU_RELEASE_PAGE, label: "The release on GitHub".into(), shortcut: "open".into() },
-        Row::Buttons { primary: (MENU_UPDATE_NOW, "Update now".into()), secondary: Some((MENU_LATER, "Later".into())) },
+        Row::Action { id: MENU_RELEASE_PAGE, label: "GitHub 上的版本頁面".into(), shortcut: "開啟".into() },
+        Row::Warn("注意：更新會換成原作者的英文版，".into()),
+        Row::Warn("中文支援會消失。".into()),
+        Row::Buttons { primary: (MENU_UPDATE_NOW, "仍要更新".into()), secondary: Some((MENU_LATER, "稍後".into())) },
     ];
     super::menu::open(s.hwnd, rows, s.fonts.clone());
 }
@@ -440,9 +462,9 @@ fn whats_new(s: &State) {
 fn download_rows(s: &State) -> Vec<Row> {
     let (v, p) = (s.update.as_ref().map_or(String::new(), |r| r.version.clone()), s.updating.unwrap_or(0.0));
     vec![
-        Row::Header { title: format!("Updating to v{v}"), status: format!("Downloading from github.com/{}", update::REPO) },
+        Row::Header { title: format!("正在更新到 v{v}"), status: format!("從 github.com/{} 下載", update::REPO) },
         Row::Progress(p),
-        Row::Text(format!("{:.0}% · then it checks the file and restarts", p * 100.0)),
+        Row::Text(format!("{:.0}% · 下載後會檢查檔案並重新啟動", p * 100.0)),
     ]
 }
 
@@ -488,6 +510,9 @@ unsafe fn command(hwnd: HWND, id: u32) {
         }
         MENU_READ => {
             with_state(toggle_read);
+        }
+        MENU_SCRIPT => {
+            with_state(next_script);
         }
         MENU_SNAP => {
             with_state(|s| s.tx.send(ToWorker::Snap).ok());

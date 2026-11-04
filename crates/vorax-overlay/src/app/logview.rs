@@ -56,12 +56,29 @@ impl Run {
 
 fn short(a: &str) -> &str {
     match a {
-        "boneSentry" => "Bone",
-        "aemberon" => "Aem",
-        "agito" => "Agi",
-        "pest" => "Pest",
+        "boneSentry" => "骨",
+        "aemberon" => "異",
+        "agito" => "覺",
+        "pest" => "蟲",
         x => x,
     }
+}
+
+/// A rarity as one word (not in upstream: the Chinese edition's).
+fn rarity_word(r: &str) -> &str {
+    match r {
+        "normal" => "普通",
+        "magic" => "魔法",
+        "rare" => "稀有",
+        "boss" => "首領",
+        x => x,
+    }
+}
+
+/// A card's name as the Chinese client prints it (names_zh.json's first form), else as the log has it.
+fn zh_card(name: &str) -> String {
+    let z = &vorax_scan::scan_data().names_zh;
+    [&z.instrument, &z.potion, &z.protocol].iter().find_map(|m| m.get(name).and_then(|f| f.first().cloned())).unwrap_or_else(|| name.to_string())
 }
 
 fn parse(text: &str) -> Vec<Run> {
@@ -95,8 +112,11 @@ fn parse(text: &str) -> Vec<Run> {
         }
         protocols |= protocol;
         let advice = head.split_once(" → ").map_or("", |x| x.1).trim();
-        let (mv, pct) = match advice.rsplit_once(" · ") {
-            Some((m, p)) => (m.trim().to_string(), p.split('%').next().and_then(|n| n.trim().parse().ok())),
+        // the move, and its odds: the part with a "%" (a "not read" note can come after it)
+        let parts: Vec<&str> = advice.split(" · ").collect();
+        let odds_at = parts.iter().rposition(|p| p.contains('%') && p.split('%').next().is_some_and(|n| n.trim().parse::<u32>().is_ok()));
+        let (mv, pct) = match odds_at {
+            Some(i) => (parts[..i].join(" · ").trim().to_string(), parts[i].split('%').next().and_then(|n| n.trim().parse().ok())),
             None => (advice.to_string(), None),
         };
         let tanks: Vec<&Value> = s["tanks"].as_array().map(|a| a.iter().filter(|t| !t.is_null()).collect()).unwrap_or_default();
@@ -106,12 +126,12 @@ fn parse(text: &str) -> Vec<Run> {
             phase: s["phase"].as_str().unwrap_or("").to_string(),
             advice: mv,
             pct,
-            instruments: s["instruments"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
+            instruments: s["instruments"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(zh_card)).collect()).unwrap_or_default(),
             tanks: tanks
                 .iter()
                 .map(|t| {
-                    let r = t["rarity"].as_str().unwrap_or("?").chars().next().unwrap_or('?').to_ascii_uppercase();
-                    format!("{} {r} {}×{}", short(t["archetype"].as_str().unwrap_or("?")), t["activity"], t["quantity"])
+                    let r = rarity_word(t["rarity"].as_str().unwrap_or("?"));
+                    format!("{r}{} {}×{}", short(t["archetype"].as_str().unwrap_or("?")), t["activity"], t["quantity"])
                 })
                 .collect::<Vec<_>>()
                 .join("  ·  "),
@@ -144,9 +164,8 @@ fn local(at: f64) -> (String, i64) {
         }
     }
     let l: windows::Win32::Foundation::SYSTEMTIME = l;
-    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     let day = l.wYear as i64 * 400 + l.wMonth as i64 * 32 + l.wDay as i64;
-    (format!("{} {} · {:02}:{:02}", MONTHS[(l.wMonth as usize).clamp(1, 12) - 1], l.wDay, l.wHour, l.wMinute), day)
+    (format!("{} 月 {} 日 · {:02}:{:02}", l.wMonth, l.wDay, l.wHour, l.wMinute), day)
 }
 
 fn when(at: f64) -> String {
@@ -155,9 +174,9 @@ fn when(at: f64) -> String {
     let (_, today) = local(now);
     let time = s.split(" · ").nth(1).unwrap_or("").to_string();
     if day == today {
-        format!("Today · {time}")
+        format!("今天 · {time}")
     } else if day == local(now - 86_400.0).1 {
-        format!("Yesterday · {time}")
+        format!("昨天 · {time}")
     } else {
         s
     }
@@ -180,7 +199,7 @@ fn thousands(n: i64) -> String {
 }
 
 /// `t` cut to `room` pixels at `px`, with "…".
-fn fit(font: &fontdue::Font, t: &str, px: f32, room: f32) -> String {
+fn fit(font: &crate::draw::Face, t: &str, px: f32, room: f32) -> String {
     if measure(font, t, px) <= room {
         return t.to_string();
     }
@@ -253,7 +272,7 @@ impl View {
         self.scroll = self.scroll.clamp(0.0, (self.content() - self.viewport()).max(0.0));
     }
     fn buttons(&self) -> ((f32, f32), (f32, f32)) {
-        let raw_w = measure(&self.fonts.bold, "Raw log", 12.5) + 26.0;
+        let raw_w = measure(&self.fonts.bold, "原始紀錄", 12.5) + 26.0;
         ((W - 14.0 - 30.0 - 8.0 - raw_w, raw_w), (W - 14.0 - 30.0, 30.0))
     }
     fn hit(&self, x: f32, y: f32) -> Option<Hit> {
@@ -318,11 +337,11 @@ fn render(v: &View) -> Pixmap {
     if let Some(p) = pb.finish() {
         pm.fill_path(&p, &paint(rgba(GOLD.0, GOLD.1, GOLD.2, 1.0)), FillRule::Winding, Transform::identity(), None);
     }
-    text(&mut pm, &v.fonts.bold, "Your runs", 16.0 * s, ox + 40.0 * s, oy + 29.0 * s, light, 1.0);
-    let status = format!("{} runs read by the overlay · newest first · click a run for its boards", v.runs.len());
+    text(&mut pm, &v.fonts.bold, "對局紀錄", 16.0 * s, ox + 40.0 * s, oy + 29.0 * s, light, 1.0);
+    let status = format!("共 {} 局 · 最新的在前 · 點一局可查看每回合", v.runs.len());
     text(&mut pm, &v.fonts.regular, &status, 12.0 * s, ox + 40.0 * s, oy + 47.0 * s, dim, 1.0);
     let ((rx, rw), (xx, xw)) = v.buttons();
-    for (hit, bx, bw, label) in [(Hit::Raw, rx, rw, "Raw log"), (Hit::Close, xx, xw, "×")] {
+    for (hit, bx, bw, label) in [(Hit::Raw, rx, rw, "原始紀錄"), (Hit::Close, xx, xw, "×")] {
         let under = v.hover == Some(hit);
         if let Some(p) = rounded(ox + bx * s, oy + 16.0 * s, bw * s, 30.0 * s, 8.0 * s) {
             pm.fill_path(&p, &paint(rgba(255, 255, 255, if under { 0.16 } else { 0.08 })), FillRule::Winding, Transform::identity(), None);
@@ -339,7 +358,7 @@ fn render(v: &View) -> Pixmap {
     let (lw, lh) = (cw, v.viewport() * s);
     let Some(mut list) = Pixmap::new(lw.ceil() as u32, lh.max(1.0).ceil() as u32) else { return pm };
     if v.runs.is_empty() {
-        text(&mut list, &v.fonts.regular, "No runs yet: they show up here once the overlay has read a game.", 13.0 * s, 20.0 * s, 30.0 * s, soft, 1.0);
+        text(&mut list, &v.fonts.regular, "還沒有紀錄：工具讀過一局後就會出現在這裡。", 13.0 * s, 20.0 * s, 30.0 * s, soft, 1.0);
     }
     for (it, top, height) in v.items() {
         let y0 = (top - v.scroll) * s;
@@ -374,26 +393,26 @@ fn render(v: &View) -> Pixmap {
                 text(&mut list, &v.fonts.bold, &when(r.at), 14.0 * s, 42.0 * s, y0 + 27.0 * s, light, 1.0);
                 let odds = r.odds();
                 if let Some(&(_, p)) = odds.last() {
-                    let label = format!("{p}% reach 840k");
+                    let label = format!("{p}% 達 840k");
                     let tw = measure(&v.fonts.bold, &label, 13.5 * s);
                     text(&mut list, &v.fonts.bold, &label, 13.5 * s, lw - 28.0 * s - tw, y0 + 27.0 * s, odds_colour(p), 1.0);
                 }
-                let path: Vec<String> = odds.iter().map(|(rd, p)| format!("r{rd} {p}%")).collect();
-                let line2 = format!("Round {} · last read {} · {} boards{}", last.round, thousands(last.score), r.boards.len(), if path.is_empty() { String::new() } else { format!(" · {}", path.join(" → ")) });
+                let path: Vec<String> = odds.iter().map(|(rd, p)| format!("R{rd} {p}%")).collect();
+                let line2 = format!("第 {} 回合 · 最後讀到 {} · {} 個畫面{}", last.round, thousands(last.score), r.boards.len(), if path.is_empty() { String::new() } else { format!(" · {}", path.join(" → ")) });
                 text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, &line2, 12.5 * s, lw - 70.0 * s), 12.5 * s, 42.0 * s, y0 + 46.0 * s, soft, 1.0);
-                let inst = if last.instruments.is_empty() { "no instruments read".to_string() } else { last.instruments.join("  ·  ") };
+                let inst = if last.instruments.is_empty() { "沒有讀到手術用具".to_string() } else { last.instruments.join("  ·  ") };
                 text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, &inst, 12.0 * s, lw - 70.0 * s), 12.0 * s, 42.0 * s, y0 + 62.0 * s, dim, 1.0);
             }
             Item::Board(i, j) => {
                 let b = &v.runs[i].boards[j];
                 let phase = match b.phase.as_str() {
-                    "instrument" => "Instrument",
-                    "protocol" => "Protocol",
-                    _ => "Potion",
+                    "instrument" => "手術用具",
+                    "protocol" => "手術方案",
+                    _ => "藥劑",
                 };
                 text(&mut list, &v.fonts.bold, &format!("R{}", b.round), 12.5 * s, 44.0 * s, y0 + 17.0 * s, GOLD, 1.0);
                 text(&mut list, &v.fonts.regular, phase, 11.5 * s, 78.0 * s, y0 + 17.0 * s, dim, 1.0);
-                let advice = if b.advice.is_empty() { "(nothing to advise)" } else { &b.advice };
+                let advice = if b.advice.is_empty() { "（沒有建議）" } else { &b.advice };
                 let right = b.pct.map(|p| format!("{p}%")).unwrap_or_default();
                 let rw = measure(&v.fonts.bold, &right, 12.5 * s);
                 text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, advice, 13.0 * s, lw - 190.0 * s - rw), 13.0 * s, 150.0 * s, y0 + 17.0 * s, light, 1.0);
@@ -402,7 +421,7 @@ fn render(v: &View) -> Pixmap {
                 }
                 // the instruments when they changed, else the tanks
                 let prev = j.checked_sub(1).map(|k| &v.runs[i].boards[k].instruments);
-                let detail = if prev != Some(&b.instruments) && !b.instruments.is_empty() { format!("Instruments: {}", b.instruments.join(" · ")) } else { b.tanks.clone() };
+                let detail = if prev != Some(&b.instruments) && !b.instruments.is_empty() { format!("手術用具：{}", b.instruments.join(" · ")) } else { b.tanks.clone() };
                 text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, &detail, 11.5 * s, lw - 190.0 * s), 11.5 * s, 150.0 * s, y0 + 33.0 * s, dim, 1.0);
             }
         }
@@ -621,5 +640,15 @@ mod protocol_round_tests {
         let runs = parse(&log);
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].boards.iter().map(|b| b.round).collect::<Vec<_>>(), vec![1, 11, 12, 12]);
+    }
+
+    #[test]
+    fn a_chinese_advice_keeps_its_odds_before_a_note() {
+        let log = r#"100.0 screen 2560x1440: picture 400 ms, read 300 ms, advice 1 ms → 細肢藥粉-蠱蟲  →  第 3 格 · 64% 達 840k · 未讀到：第 2 張卡（Ctrl+Alt+X）; board {"tanks":[{"archetype":"boneSentry","rarity":"rare","activity":15,"quantity":12},null,null,null,null,null],"hand":["Eggshell Powder"],"instruments":["Chrysalis Specimen"],"phase":"potion","round":1}"#;
+        let runs = parse(log);
+        let b = &runs[0].boards[0];
+        assert_eq!((b.advice.as_str(), b.pct), ("細肢藥粉-蠱蟲  →  第 3 格", Some(64)));
+        assert_eq!(b.instruments, vec!["人蛹標本".to_string()]);
+        assert_eq!(b.tanks, "稀有骨 15×12");
     }
 }

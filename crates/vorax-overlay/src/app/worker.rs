@@ -261,6 +261,8 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
     let outcome = pipe.run(&frame, trigger, reader);
     if !ocr_texts.is_empty() {
         note(&format!("card titles read: {}", ocr_texts.iter().map(|t| format!("[{t}]")).collect::<Vec<_>>().join(" ")));
+        // not in upstream: the writing the titles show, for the words' auto writing
+        crate::zh::observe(&ocr_texts);
     }
     if pipe.resumed {
         note("the Vorax screen opened again on the game under way: it goes on (instruments kept)");

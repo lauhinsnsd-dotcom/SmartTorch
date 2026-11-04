@@ -10,6 +10,7 @@
 
 mod draw;
 mod pipeline;
+mod zh;
 #[cfg(windows)]
 mod app;
 

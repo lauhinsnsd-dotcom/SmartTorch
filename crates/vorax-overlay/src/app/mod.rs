@@ -59,25 +59,25 @@ pub fn run(args: &[String]) {
         let Some(out) = args.get(i + 1) else { return };
         let Some(fonts) = crate::draw::Fonts::system() else { return };
         let rows = vec![
-            menu::Row::Header { title: "Vorax overlay".into(), status: format!("v{} · odds of {}", update::current(), vorax::data().odds) },
-            menu::Row::Warn("Game log off: boards aren't read by themselves".into()),
-            menu::Row::Action { id: 0, label: "How to turn the game's log on".into(), shortcut: String::new() },
+            menu::Row::Header { title: "Vorax 輔助器中文版".into(), status: format!("v{} · 機率資料 {}", update::current(), vorax::data().odds) },
+            menu::Row::Warn("遊戲日誌未開啟：不會自動讀取畫面".into()),
+            menu::Row::Action { id: 0, label: "如何開啟遊戲日誌".into(), shortcut: String::new() },
             menu::Row::Separator,
-            menu::Row::Switch { id: 0, label: "Show overlay".into(), on: true },
-            menu::Row::Action { id: 0, label: "Read the board now".into(), shortcut: "Ctrl+Alt+X".into() },
-            menu::Row::Levels { base: 0, level: 6, hint: |l| format!("{} instrument rerolls", crate::pipeline::shelley_rerolls(l)) },
+            menu::Row::Switch { id: 0, label: "顯示提示（Ctrl+Alt+V）".into(), on: true },
+            menu::Row::Action { id: 0, label: "立即讀取畫面".into(), shortcut: "Ctrl+Alt+X".into() },
+            menu::Row::Levels { base: 0, level: 6, hint: |l| format!("手術用具可刷新 {} 次", crate::pipeline::shelley_rerolls(l)) },
             menu::Row::Colors { base: 0, selected: 0 },
             menu::Row::Separator,
-            menu::Row::Action { id: 0, label: "Your runs".into(), shortcut: "the log".into() },
+            menu::Row::Action { id: 0, label: "對局紀錄".into(), shortcut: "查看".into() },
             menu::Row::Separator,
-            menu::Row::Action { id: 0, label: "Quit".into(), shortcut: "Ctrl+Alt+Q".into() },
+            menu::Row::Action { id: 0, label: "結束".into(), shortcut: "Ctrl+Alt+Q".into() },
         ];
         // the menu as it usually is: the game's log on
         let plain = args.iter().any(|a| a == "--plain");
         let rows = if plain {
             let mut head = vec![
-                menu::Row::Header { title: "Vorax overlay".into(), status: format!("v{} · odds of {}", update::current(), vorax::data().odds) },
-                menu::Row::Text("Game log on: boards are read by themselves".into()),
+                menu::Row::Header { title: "Vorax 輔助器中文版".into(), status: format!("v{} · 機率資料 {}", update::current(), vorax::data().odds) },
+                menu::Row::Text("遊戲日誌已開啟：會自動讀取畫面".into()),
             ];
             head.extend(rows.into_iter().skip(3));
             head
@@ -87,13 +87,13 @@ pub fn run(args: &[String]) {
         // the steps shown when the game's log is off
         let rows = if args.iter().any(|a| a == "--log-card") {
             vec![
-                menu::Row::Header { title: "Turn the game's log on".into(), status: "Until then boards aren't read by themselves".into() },
-                menu::Row::Text("1.  In the game, press Esc".into()),
-                menu::Row::Text("2.  Open Account Related".into()),
-                menu::Row::Text("3.  Click Enable Log".into()),
-                menu::Row::Text("4.  Log out and back in".into()),
-                menu::Row::Text("Meanwhile Ctrl+Alt+X reads the board.".into()),
-                menu::Row::Buttons { primary: (0, "OK".into()), secondary: None },
+                menu::Row::Header { title: "開啟遊戲日誌".into(), status: "開啟前不會自動讀取畫面".into() },
+                menu::Row::Text("1.  在遊戲中按 Esc".into()),
+                menu::Row::Text("2.  開啟「帳號相關」".into()),
+                menu::Row::Text("3.  點「開啟日誌」".into()),
+                menu::Row::Text("4.  登出後再登入".into()),
+                menu::Row::Text("在此之前，可按 Ctrl+Alt+X 讀取畫面。".into()),
+                menu::Row::Buttons { primary: (0, "確定".into()), secondary: None },
             ]
         } else {
             rows
@@ -157,6 +157,7 @@ pub fn run(args: &[String]) {
     }
     update::clean_up();
     sys::note(&format!("Vorax overlay v{} started (Intern Shelley level {}, odds of {})", update::current(), settings.shelley, vorax::data().odds));
+    crate::zh::set_mode(settings.script);
     let Some(fonts) = crate::draw::Fonts::system() else {
         sys::note("no Segoe UI or Arial font found");
         return;

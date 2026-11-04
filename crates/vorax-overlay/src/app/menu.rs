@@ -231,7 +231,7 @@ fn render(m: &Menu) -> Pixmap {
             Row::Colors { selected, .. } => {
                 let under = m.hover.and_then(|h| if h.0 == i { h.1 } else { None });
                 let name = ACCENTS[under.map_or(*selected, |u| u as usize).min(ACCENTS.len() - 1)].0;
-                text(&mut pm, &m.fonts.regular, "Marker colour", 13.5 * s, ox + 16.0 * s, mid - 1.0 * s, light, 1.0);
+                text(&mut pm, &m.fonts.regular, "標記顏色", 13.5 * s, ox + 16.0 * s, mid - 1.0 * s, light, 1.0);
                 text(&mut pm, &m.fonts.regular, name, 11.5 * s, ox + 16.0 * s, mid + 13.0 * s, dim, 1.0);
                 let (xs, size) = swatches();
                 for (k, bx) in xs.iter().enumerate() {
@@ -249,7 +249,7 @@ fn render(m: &Menu) -> Pixmap {
                 }
             }
             Row::Levels { level, hint, .. } => {
-                text(&mut pm, &m.fonts.regular, "Intern Shelley", 13.5 * s, ox + 16.0 * s, y0 + 21.0 * s, light, 1.0);
+                text(&mut pm, &m.fonts.regular, "實習生雪莉等級", 13.5 * s, ox + 16.0 * s, y0 + 21.0 * s, light, 1.0);
                 let shown = m.hover.and_then(|h| if h.0 == i { h.1 } else { None }).unwrap_or(*level);
                 text(&mut pm, &m.fonts.regular, &hint(shown), 11.5 * s, ox + 16.0 * s, y0 + 37.0 * s, dim, 1.0);
                 let (xs, size) = level_boxes();

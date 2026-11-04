@@ -94,11 +94,6 @@ const ZH_PEST: &str = "蟲";
 const ZH_AEMBERON: &str = "異";
 const ZH_BONE_SENTRY: &str = "骨";
 const ZH_AGITO: &str = "覺";
-#[cfg(test)]
-const ZH_ALL: [&str; 17] = [
-    ZH_REROLL, ZH_ALWAYS, ZH_REACH, ZH_TANK, ZH_CARD, ZH_NOT_READ, ZH_NOT_FULLY, ZH_NOT_IN_DATA, ZH_READ_CARDS, ZH_EMPTY, ZH_UNKNOWN,
-    ZH_SEP, ZH_PEST, ZH_AEMBERON, ZH_BONE_SENTRY, ZH_AGITO, "×",
-];
 
 /// The marks' colours: a rarity's as the game colours its names, and an empty tank's and an unread one's.
 const NORMAL: (u8, u8, u8) = (236, 232, 228);
@@ -307,36 +302,50 @@ pub fn not_read(reading: &Reading) -> Missed {
     m
 }
 
-pub struct Fonts {
-    pub bold: fontdue::Font,
-    pub regular: fontdue::Font,
-    /// not in upstream: for a hint in Chinese, which Windows' Segoe UI doesn't have (a subset of Noto Sans TC, SIL
-    /// OFL 1.1, built into the program: data/fonts)
-    pub zh_bold: Option<fontdue::Font>,
-    pub zh_regular: Option<fontdue::Font>,
+/// A typeface with fallbacks (not in upstream): each character drawn in the first of its fonts that has it. The
+/// Chinese edition's: Segoe UI from Windows, then the built-in Chinese fonts (Windows' Segoe UI has no Chinese).
+pub struct Face {
+    fonts: Vec<fontdue::Font>,
 }
 
+impl Face {
+    pub fn new(fonts: Vec<fontdue::Font>) -> Face {
+        Face { fonts }
+    }
+
+    /// The font a character is drawn in.
+    fn of(&self, c: char) -> &fontdue::Font {
+        self.fonts.iter().find(|f| f.lookup_glyph_index(c) != 0).unwrap_or(&self.fonts[0])
+    }
+}
+
+pub struct Fonts {
+    pub bold: Face,
+    pub regular: Face,
+}
+
+/// Subsets of Noto Sans TC and SC (SIL OFL 1.1), cut to what the overlay can show (dev/make_font_zh.py).
 static ZH_BOLD: &[u8] = include_bytes!("../../../data/fonts/zh-bold.ttf");
 static ZH_REGULAR: &[u8] = include_bytes!("../../../data/fonts/zh-regular.ttf");
+static SC_BOLD: &[u8] = include_bytes!("../../../data/fonts/sc-bold.ttf");
+static SC_REGULAR: &[u8] = include_bytes!("../../../data/fonts/sc-regular.ttf");
+
+fn built_in(b: &[u8]) -> Option<fontdue::Font> {
+    fontdue::Font::from_bytes(b, fontdue::FontSettings::default()).ok()
+}
 
 impl Fonts {
-    /// Segoe UI from Windows (Arial where it's missing).
+    /// Segoe UI from Windows (Arial where it's missing), then the built-in Chinese fonts.
     pub fn system() -> Option<Fonts> {
         let dir = std::env::var("WINDIR").map(|w| format!("{w}\\Fonts")).unwrap_or_else(|_| "C:\\Windows\\Fonts".into());
         let load = |names: &[&str]| {
             names.iter().find_map(|n| std::fs::read(format!("{dir}\\{n}")).ok()).and_then(|b| fontdue::Font::from_bytes(b, fontdue::FontSettings::default()).ok())
         };
-        let zh = |b: &[u8]| fontdue::Font::from_bytes(b, fontdue::FontSettings::default()).ok();
-        Some(Fonts { bold: load(&["segoeuib.ttf", "arialbd.ttf"])?, regular: load(&["segoeui.ttf", "arial.ttf"])?, zh_bold: zh(ZH_BOLD), zh_regular: zh(ZH_REGULAR) })
-    }
-
-    /// The fonts for a pill's text: the Chinese ones when Segoe UI lacks one of its characters.
-    fn for_pill(&self, texts: &[&str]) -> (&fontdue::Font, &fontdue::Font) {
-        let missing = texts.iter().flat_map(|t| t.chars()).any(|c| !c.is_whitespace() && self.bold.lookup_glyph_index(c) == 0);
-        match (&self.zh_bold, &self.zh_regular) {
-            (Some(b), Some(r)) if missing => (b, r),
-            _ => (&self.bold, &self.regular),
-        }
+        let face = |windows: Option<fontdue::Font>, zh: &[u8], sc: &[u8]| {
+            let fonts: Vec<fontdue::Font> = [windows, built_in(zh), built_in(sc)].into_iter().flatten().collect();
+            (!fonts.is_empty()).then(|| Face::new(fonts))
+        };
+        Some(Fonts { bold: face(load(&["segoeuib.ttf", "arialbd.ttf"]), ZH_BOLD, SC_BOLD)?, regular: face(load(&["segoeui.ttf", "arial.ttf"]), ZH_REGULAR, SC_REGULAR)? })
     }
 }
 
@@ -372,11 +381,11 @@ pub(crate) fn rounded(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<tiny_ski
 
 /// The marks' colours to choose from (the tray menu): bright ones that stand out on the game's red and gold.
 pub const ACCENTS: [(&str, (u8, u8, u8)); 5] = [
-    ("Cyan", (64, 232, 255)),
-    ("Green", (90, 255, 140)),
-    ("Magenta", (255, 92, 214)),
-    ("White", (255, 255, 255)),
-    ("Gold", (255, 214, 138)),
+    ("青色", (64, 232, 255)),
+    ("綠色", (90, 255, 140)),
+    ("洋紅", (255, 92, 214)),
+    ("白色", (255, 255, 255)),
+    ("金色", (255, 214, 138)),
 ];
 
 pub fn accent(i: usize) -> (u8, u8, u8) {
@@ -403,31 +412,36 @@ fn diamond_path(x: f32, y: f32, r: f32) -> Option<tiny_skia::Path> {
     pb.finish()
 }
 
-/// Text width at a size, with kerning.
-pub(crate) fn measure(font: &fontdue::Font, text: &str, px: f32) -> f32 {
+/// Text width at a size, with kerning (in Simplified when the overlay shows Simplified: zh::shown).
+pub(crate) fn measure(font: &Face, text: &str, px: f32) -> f32 {
+    let text = crate::zh::shown(text);
     let mut w = 0.0;
-    let mut prev = None;
+    let mut prev: Option<(char, *const fontdue::Font)> = None;
     for ch in text.chars() {
-        if let Some(p) = prev {
-            w += font.horizontal_kern(p, ch, px).unwrap_or(0.0);
+        let f = font.of(ch);
+        if let Some((p, _)) = prev.filter(|(_, pf)| std::ptr::eq(*pf, f)) {
+            w += f.horizontal_kern(p, ch, px).unwrap_or(0.0);
         }
-        w += font.metrics(ch, px).advance_width;
-        prev = Some(ch);
+        w += f.metrics(ch, px).advance_width;
+        prev = Some((ch, f as *const _));
     }
     w
 }
 
-/// Draws text with its baseline at y, alpha-blended into the premultiplied picture.
-pub(crate) fn text(pm: &mut Pixmap, font: &fontdue::Font, s: &str, px: f32, x: f32, baseline: f32, (r, g, b): (u8, u8, u8), alpha: f32) {
+/// Draws text with its baseline at y, alpha-blended into the premultiplied picture (in Simplified when the
+/// overlay shows Simplified: zh::shown).
+pub(crate) fn text(pm: &mut Pixmap, font: &Face, s: &str, px: f32, x: f32, baseline: f32, (r, g, b): (u8, u8, u8), alpha: f32) {
+    let s = crate::zh::shown(s);
     let (w, h) = (pm.width() as i32, pm.height() as i32);
     let data = pm.data_mut();
     let mut pen = x;
-    let mut prev = None;
+    let mut prev: Option<(char, *const fontdue::Font)> = None;
     for ch in s.chars() {
-        if let Some(p) = prev {
-            pen += font.horizontal_kern(p, ch, px).unwrap_or(0.0);
+        let f = font.of(ch);
+        if let Some((p, _)) = prev.filter(|(_, pf)| std::ptr::eq(*pf, f)) {
+            pen += f.horizontal_kern(p, ch, px).unwrap_or(0.0);
         }
-        let (m, cov) = font.rasterize(ch, px);
+        let (m, cov) = f.rasterize(ch, px);
         let gx = (pen + m.xmin as f32).round() as i32;
         let gy = (baseline - m.height as f32 - m.ymin as f32).round() as i32;
         for yy in 0..m.height as i32 {
@@ -448,7 +462,7 @@ pub(crate) fn text(pm: &mut Pixmap, font: &fontdue::Font, s: &str, px: f32, x: f
             }
         }
         pen += m.advance_width;
-        prev = Some(ch);
+        prev = Some((ch, f as *const _));
     }
 }
 
@@ -491,7 +505,7 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
             Some((a, b)) if a.ends_with('%') => (a.to_string(), format!(" {b}")),
             _ => (String::new(), pill.sub.clone()),
         };
-        let (bold, regular) = fonts.for_pill(&[&pill.main, &pill.sub]);
+        let (bold, regular) = (&fonts.bold, &fonts.regular);
         let tw = measure(bold, &pill.main, big);
         let ow = measure(bold, &odds, small);
         let rw = measure(regular, &rest, small);
@@ -520,7 +534,7 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
     // not in upstream: what was read, under the pill, in a box of its own
     if !plan.read.is_empty() {
         let refs: Vec<&str> = plan.read.iter().map(String::as_str).collect();
-        let (_, regular) = fonts.for_pill(&refs);
+        let regular = &fonts.regular;
         let px_ = 16.0 * s;
         let (line_h, padx, pady) = (24.0 * s, 14.0 * s, 8.0 * s);
         let bw = refs.iter().map(|t| measure(regular, t, px_)).fold(0.0f32, f32::max) + 2.0 * padx;
@@ -536,8 +550,7 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
     }
     // not in upstream: each tank as read, under its label, in its rarity's colour
     if !plan.read_tanks.is_empty() {
-        let texts: Vec<&str> = plan.read_tanks.iter().map(|m| m.text.as_str()).collect();
-        let (bold, _) = fonts.for_pill(&texts);
+        let bold = &fonts.bold;
         let px_ = 19.0 * s;
         let (padx, bh) = (8.0 * s, 28.0 * s);
         let alpha = if plan.pill.as_ref().is_some_and(|p| p.dim) { 0.55 } else { 1.0 };
@@ -558,26 +571,51 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
 mod zh_tests {
     use super::*;
 
-    fn zh_fonts() -> (fontdue::Font, fontdue::Font) {
+    /// The built-in fonts alone (no Windows here), as faces: Traditional then Simplified.
+    fn built_in_fonts() -> Fonts {
         let f = |b: &[u8]| fontdue::Font::from_bytes(b, fontdue::FontSettings::default()).unwrap();
-        (f(ZH_BOLD), f(ZH_REGULAR))
+        Fonts { bold: Face::new(vec![f(ZH_BOLD), f(SC_BOLD)]), regular: Face::new(vec![f(ZH_REGULAR), f(SC_REGULAR)]) }
     }
 
-    /// Every character a Chinese hint can show is in the built-in font (else: run dev/make_font_zh.py again).
+    /// Every Chinese string in the overlay's source (its words: the hint, the menus, the runs window).
+    fn source_words() -> Vec<String> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut out = Vec::new();
+        let mut files = vec![dir.clone()];
+        while let Some(p) = files.pop() {
+            if p.is_dir() {
+                files.extend(std::fs::read_dir(&p).unwrap().flatten().map(|e| e.path()));
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                let src = std::fs::read_to_string(&p).unwrap();
+                for lit in src.split('"').skip(1).step_by(2) {
+                    if lit.chars().any(|c| ('\u{3400}'..='\u{9fff}').contains(&c)) {
+                        out.push(lit.to_string());
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Every character the overlay can show is in the built-in fonts, in Traditional and in Simplified (else: run
+    /// dev/make_font_zh.py again).
     #[test]
-    fn the_chinese_font_has_every_character_of_the_hint() {
+    fn the_chinese_fonts_have_every_character_shown() {
         let z = &vorax_scan::scan_data().names_zh;
-        let mut texts: Vec<String> = ZH_ALL.iter().map(|s| s.to_string()).collect();
-        texts.push("→·「」（）、：0123456789% +Ctrl+Alt+Xk".into());
-        // the names the hint shows: each card's first form, and the unsupported ones as they're recognized
+        let mut texts = source_words();
+        assert!(texts.iter().any(|t| t.contains("立即讀取畫面")), "the tray's words are among the source's");
+        texts.push("→·×0123456789% +Ctrl+Alt+Xk".into());
+        // the names shown: each card's first form, and the unsupported ones as they're recognized
         for m in [&z.potion, &z.instrument, &z.protocol] {
             texts.extend(m.values().filter_map(|f| f.first()).cloned());
         }
         texts.extend(z.unsupported.iter().filter_map(|n| vorax_scan::titles::han_unsupported(vorax_scan::scan_data(), n)));
-        let (bold, regular) = zh_fonts();
-        for t in &texts {
-            for c in t.chars().filter(|c| !c.is_whitespace()) {
-                assert!(bold.lookup_glyph_index(c) != 0 && regular.lookup_glyph_index(c) != 0, "{c} ({t}) is not in data/fonts: run dev/make_font_zh.py");
+        let fonts = built_in_fonts();
+        for t in texts.iter().flat_map(|t| [t.clone(), crate::zh::to_simplified(t)]) {
+            for c in t.chars().filter(|c| !c.is_whitespace() && !c.is_control()) {
+                for face in [&fonts.bold, &fonts.regular] {
+                    assert!(face.of(c).lookup_glyph_index(c) != 0, "{c} ({t}) is not in data/fonts: run dev/make_font_zh.py");
+                }
             }
         }
     }
@@ -592,9 +630,7 @@ mod zh_tests {
     /// VORAX_PILL_PNG=<dir>: the Chinese pills drawn there, to look at.
     #[test]
     fn chinese_pills_draw() {
-        let (bold, regular) = zh_fonts();
-        let (b2, r2) = zh_fonts();
-        let fonts = Fonts { bold, regular, zh_bold: Some(b2), zh_regular: Some(r2) };
+        let fonts = built_in_fonts();
         let pills = [
             Pill { main: "細肢藥粉-蠱蟲  →  第 3 格".into(), sub: "64% 達 840k".into(), dim: false },
             Pill { main: "獸筋絞肉索  →  第 2 + 5 格".into(), sub: "41% 達 840k · 未讀到：第 2 張卡、第 3 格（Ctrl+Alt+X）".into(), dim: false },
@@ -606,6 +642,11 @@ mod zh_tests {
             assert!(pm.data().chunks(4).any(|px| px[3] > 0));
             if let Ok(dir) = std::env::var("VORAX_PILL_PNG") {
                 crate::pipeline::encode_png(&std::path::Path::new(&dir).join(format!("pill{i}.png")), pm.width(), pm.height(), pm.data()).unwrap();
+                // and as a Simplified client sees it
+                crate::zh::set_mode(crate::zh::SIMPLIFIED);
+                let pm = render(&plan, 1600, 120, &fonts, (64, 232, 255));
+                crate::zh::set_mode(crate::zh::AUTO);
+                crate::pipeline::encode_png(&std::path::Path::new(&dir).join(format!("pill{i}s.png")), pm.width(), pm.height(), pm.data()).unwrap();
             }
         }
     }
@@ -646,9 +687,7 @@ mod zh_tests {
         let mut pipe = crate::pipeline::Pipeline::new(6);
         pipe.script = vorax_scan::titles::Script::Han;
         let crate::pipeline::Outcome::Advice { plan, .. } = pipe.run(&img, Some("board"), None) else { panic!("not a board") };
-        let (bold, regular) = zh_fonts();
-        let (b2, r2) = zh_fonts();
-        let fonts = Fonts { bold, regular, zh_bold: Some(b2), zh_regular: Some(r2) };
+        let fonts = built_in_fonts();
         let mut pm = render(&plan, img.width as u32, img.height as u32, &fonts, (64, 232, 255));
         // over the frame, to see it as on screen
         let mut out = img.data.clone();

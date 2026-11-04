@@ -197,11 +197,14 @@ pub struct Settings {
     /// the marks' colour: an index into draw::ACCENTS
     #[serde(default)]
     pub accent: usize,
+    /// not in upstream: the words in Traditional or Simplified (zh::AUTO, TRADITIONAL, SIMPLIFIED)
+    #[serde(default)]
+    pub script: u8,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { shelley: 6, shown: true, ocr: true, accent: 0 }
+        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0 }
     }
 }
 
