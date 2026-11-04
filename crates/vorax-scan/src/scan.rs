@@ -193,9 +193,21 @@ pub fn scan_with(captured: &Img, data: &ScanData, pictures: bool, hand_dy: Optio
     }
 
     if phase != ScreenPhase::Protocol {
-        let rf = read_text(img, &g, &l.refresh, TextKind::Refresh, &data.digits["refresh"]);
-        let left: f64 = rf.as_ref().map_or(f64::NAN, |r| if r.text.is_empty() { 0.0 } else { r.text.parse::<f64>().unwrap_or(f64::NAN) });
-        let ok = rf.as_ref().is_some_and(|r| left.fract() == 0.0 && (0.0..=9.0).contains(&left) && r.score >= DIGIT_MIN);
+        let read_left = |refs: &indexmap::IndexMap<String, Vec<Vec<f64>>>| {
+            let rf = read_text(img, &g, &l.refresh, TextKind::Refresh, refs);
+            let left: f64 = rf.as_ref().map_or(f64::NAN, |r| if r.text.is_empty() { 0.0 } else { r.text.parse::<f64>().unwrap_or(f64::NAN) });
+            let ok = rf.as_ref().is_some_and(|r| left.fract() == 0.0 && (0.0..=9.0).contains(&left) && r.score >= DIGIT_MIN);
+            (rf, left, ok)
+        };
+        let (mut rf, mut left, mut ok) = read_left(&data.digits["refresh"]);
+        // not in upstream: the Simplified Chinese client's "1" on the refresh button (a longer flag), which upstream's
+        // references don't take for anything and count as no refreshes left: tried when upstream's read isn't sure
+        if !ok && data.digits_zh.get("refresh").is_some_and(|m| !m.is_empty()) {
+            let zh = read_left(&data.digits_with_zh("refresh"));
+            if zh.2 {
+                (rf, left, ok) = zh;
+            }
+        }
         let v = Some(if ok { left as i32 } else { 0 });
         if phase == ScreenPhase::Potion {
             state.potion_refreshes = v;
