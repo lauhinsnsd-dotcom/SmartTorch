@@ -157,9 +157,6 @@ pub fn run(args: &[String]) {
     }
     update::clean_up();
     sys::note(&format!("Vorax overlay v{} started (Intern Shelley level {}, odds of {})", update::current(), settings.shelley, vorax::data().odds));
-    if vorax::bot::fair_reroll() {
-        sys::note("fair reroll on: a reroll's futures pick from the new offer by playing it out");
-    }
     let Some(fonts) = crate::draw::Fonts::system() else {
         sys::note("no Segoe UI or Arial font found");
         return;

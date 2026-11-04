@@ -4,8 +4,7 @@
 //!   vorax-overlay                         run over the game (Windows)
 //!   vorax-overlay --preview in.png out.png   draw the overlay onto a saved screenshot
 //! Options: --shelley N (Intern Shelley level, 1-6; default 6), --log <UE_game.log>, --no-ocr, --console,
-//!   --ocr-lang zh (read a Chinese client's card titles; or a tag such as zh-Hant-TW),
-//!   --fair-reroll (the Chinese edition's fair instrument reroll: see vorax::bot::FAIR_REROLL)
+//!   --ocr-lang zh (read a Chinese client's card titles; or a tag such as zh-Hant-TW)
 
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
@@ -22,9 +21,6 @@ pub fn arg<T: std::str::FromStr>(args: &[String], name: &str) -> Option<T> {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.iter().any(|a| a == "--fair-reroll") {
-        vorax::bot::FAIR_REROLL.store(true, std::sync::atomic::Ordering::Relaxed);
-    }
     if let Some(i) = args.iter().position(|a| a == "--preview") {
         let (Some(input), Some(output)) = (args.get(i + 1), args.get(i + 2)) else {
             eprintln!("usage: vorax-overlay --preview <screenshot.png> <out.png> [--shelley N]");
