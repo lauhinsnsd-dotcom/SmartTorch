@@ -1,6 +1,7 @@
 # Builds the Chinese edition on Windows on every push: the tests first, then vorax-overlay.exe, packed with its
 # start files and licences as a zip to download from the run's page (Actions → the run → Artifacts). A version
-# tag (v0.2.2-zh.1 and so on) also puts that zip on a release of its own, with its SHA-256.
+# tag (v0.2.2-zh.1 and so on, or a release made on GitHub's page with a new tag) also puts that zip on the
+# release, with its SHA-256.
 name: build
 
 on:
@@ -77,4 +78,13 @@ jobs:
           "@
           $notes = ($notes -split "`n" | ForEach-Object { $_ -replace '^          ', '' }) -join "`n"
           Set-Content -Path notes.md -Value $notes -Encoding utf8
-          gh release create $tag $zip --title "$tag" --notes-file notes.md
+          # a release made on the web page (its tag made with it) gets the zip and the notes; a tag pushed alone
+          # gets a release of its own
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $zip --clobber
+            gh release edit $tag --notes-file notes.md
+          } else {
+            gh release create $tag $zip --title "$tag" --notes-file notes.md
+          }
+          exit $LASTEXITCODE
