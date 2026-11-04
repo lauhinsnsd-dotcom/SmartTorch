@@ -362,15 +362,25 @@ pub fn read_tank(img: &Img, g: &[f32], l: &Layout, i: usize, data: &ScanData, gl
         (total, aq, st, fits)
     };
     // not in upstream: the Simplified Chinese client draws the Activity x Quantity line's "1" with a longer flag,
-    // which the English client's references take for a "4" (1x171 as 4x474). Its glyphs are tried only when a
-    // line doesn't fit as read, so a read that fits keeps upstream's result.
+    // which the English client's references take for a "4" (1x171 as 4x474). Its glyphs are tried when a line
+    // doesn't fit as read, and kept when they make both lines fit as read. Also when upstream's read fits only
+    // mended (a glyph changed or dropped): 15x12 read as 45x42, then 45x4 with the 2 dropped, fits a total of 180.
+    let as_read = |r: &(Option<TextRead>, Option<TextRead>, (f64, f64, bool), bool)| match (&r.0, &r.1) {
+        (Some(t), Some(a)) => stats(Some(&t.text), Some(&a.text)).2 && t.score >= DIGIT_MIN && a.score >= DIGIT_MIN,
+        _ => false,
+    };
+    let has_zh = zh.values().map(Vec::len).sum::<usize>() > base.values().map(Vec::len).sum::<usize>();
     let read_at = |dt: f64, da: f64| {
         let r = read_with(dt, da, base);
-        if r.3 || zh.len() == base.len() && zh.values().map(Vec::len).sum::<usize>() == base.values().map(Vec::len).sum::<usize>() {
+        if !has_zh || as_read(&r) {
             return r;
         }
         let z = read_with(dt, da, &zh);
-        if z.3 { z } else { r }
+        if as_read(&z) || (z.3 && !r.3) {
+            z
+        } else {
+            r
+        }
     };
     // a read found by searching around counts only when both lines read well: reconciling weak glyphs there can
     // make a line up out of noise ("4" and "4 x 1" from a label that says 31125 and 125 x 249)
