@@ -249,7 +249,7 @@ fn render(m: &Menu) -> Pixmap {
                 }
             }
             Row::Levels { level, hint, .. } => {
-                text(&mut pm, &m.fonts.regular, "實習生雪莉等級", 13.5 * s, ox + 16.0 * s, y0 + 21.0 * s, light, 1.0);
+                text(&mut pm, &m.fonts.regular, "實習醫生雪萊等級", 13.5 * s, ox + 16.0 * s, y0 + 21.0 * s, light, 1.0);
                 let shown = m.hover.and_then(|h| if h.0 == i { h.1 } else { None }).unwrap_or(*level);
                 text(&mut pm, &m.fonts.regular, &hint(shown), 11.5 * s, ox + 16.0 * s, y0 + 37.0 * s, dim, 1.0);
                 let (xs, size) = level_boxes();
