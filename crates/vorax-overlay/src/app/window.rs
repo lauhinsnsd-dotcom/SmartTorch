@@ -317,8 +317,8 @@ fn toggle(s: &mut State) {
 fn script_label() -> String {
     match crate::zh::mode() {
         crate::zh::TRADITIONAL => "文字：繁體".into(),
-        crate::zh::SIMPLIFIED => "文字：簡體".into(),
-        _ => format!("文字：自動（目前{}）", if crate::zh::simplified() { "簡體" } else { "繁體" }),
+        crate::zh::SIMPLIFIED => "文字：簡體（測試中）".into(),
+        _ => format!("文字：自動（目前{}）", if crate::zh::simplified() { "簡體，測試中" } else { "繁體" }),
     }
 }
 
