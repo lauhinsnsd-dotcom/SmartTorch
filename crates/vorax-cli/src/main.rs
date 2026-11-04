@@ -74,6 +74,10 @@ fn info() {
 }
 
 fn advise(args: &[String]) {
+    // not in upstream: --fair, the Chinese edition's fair reroll (bot::FAIR_REROLL)
+    if args.iter().any(|a| a == "--fair") {
+        vorax::bot::FAIR_REROLL.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     let file = args.iter().find(|a| !a.starts_with("--") && args.iter().position(|b| b == *a).is_none_or(|i| i == 0 || !args[i - 1].starts_with("--")));
     let mut text = String::new();
     match file {
@@ -126,6 +130,10 @@ fn bench(args: &[String]) {
 }
 
 fn sim(args: &[String]) {
+    // not in upstream: --fair, the Chinese edition's fair reroll (bot::FAIR_REROLL)
+    if args.iter().any(|a| a == "--fair") {
+        vorax::bot::FAIR_REROLL.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     let games: u32 = arg(args, "--games").unwrap_or(100);
     let seed0: u32 = arg(args, "--seed0").unwrap_or(1_000_000);
     let policy: String = arg(args, "--policy").unwrap_or_else(|| "value".into());

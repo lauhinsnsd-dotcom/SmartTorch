@@ -1,0 +1,95 @@
+# 模擬比較（手動開始）：作者原本的做法與「公平刷新」模式，玩同一批局，比較達到 840k（彩箱）的比例。
+# Actions → simulate → Run workflow。結果寫在這次執行頁面的 Summary。
+# Simulation (started by hand): upstream's advice against the fair reroll (vorax::bot::FAIR_REROLL) on the same
+# seeds, split over 10 machines; the summary compares how often each reaches 840k.
+name: simulate
+
+on:
+  workflow_dispatch:
+    inputs:
+      games:
+        description: "每部機玩幾局（共 10 部機）／games per machine (10 machines)"
+        default: "200"
+      futures:
+        description: "每個選擇模擬幾次（越多越準、越慢；遊戲中用 1024）／futures per option"
+        default: "64"
+      seed0:
+        description: "第一局的種子（同一個數字＝同一批局）／first seed"
+        default: "1000000"
+
+permissions:
+  contents: read
+
+jobs:
+  play:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust
+        run: rustup default stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release -p vorax-cli
+      - name: Play
+        run: |
+          g=${{ inputs.games }}
+          s=$(( ${{ inputs.seed0 }} + ${{ matrix.shard }} * g ))
+          ./target/release/vorax sim --policy solver --games $g --seed0 $s --futures ${{ inputs.futures }} --scores base-${{ matrix.shard }}.txt
+          ./target/release/vorax sim --policy solver --games $g --seed0 $s --futures ${{ inputs.futures }} --fair --scores fair-${{ matrix.shard }}.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scores-${{ matrix.shard }}
+          path: "*-${{ matrix.shard }}.txt"
+
+  compare:
+    needs: play
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: scores-*
+          merge-multiple: true
+      - name: Compare
+        shell: python
+        run: |
+          import glob, math, os
+          def load(kind):
+              d = {}
+              for f in glob.glob(f"{kind}-*.txt"):
+                  for line in open(f):
+                      seed, score = line.split()
+                      d[int(seed)] = int(score)
+              return d
+          base, fair = load("base"), load("fair")
+          seeds = sorted(set(base) & set(fair))
+          n = len(seeds)
+          T, R = 840_000, 1_120_000
+          def stats(d):
+              v = [d[s] for s in seeds]
+              return sum(x >= T for x in v) / n * 100, sum(x >= R for x in v) / n * 100, sum(v) / n, sorted(v)[n // 2]
+          b, f = stats(base), stats(fair)
+          only_fair = sum(fair[s] >= T > base[s] for s in seeds)
+          only_base = sum(base[s] >= T > fair[s] for s in seeds)
+          k = only_fair + only_base
+          # two-sided sign test on the games where exactly one of them reached 840k
+          p = min(1.0, 2 * sum(math.comb(k, i) for i in range(0, min(only_fair, only_base) + 1)) / 2 ** k) if k else 1.0
+          out = [
+              f"## 模擬結果：{n} 局（每個選擇 {os.environ.get('FUTURES')} 次模擬）",
+              "",
+              "| | 作者原本 | 公平刷新 |",
+              "|---|---|---|",
+              f"| 達到 840k（彩箱） | {b[0]:.1f}% | {f[0]:.1f}% |",
+              f"| 達到 1.12M | {b[1]:.1f}% | {f[1]:.1f}% |",
+              f"| 平均分 | {b[2]:,.0f} | {f[2]:,.0f} |",
+              f"| 中位數 | {b[3]:,} | {f[3]:,} |",
+              "",
+              f"只有公平刷新達到 840k：{only_fair} 局；只有作者原本達到：{only_base} 局。",
+              f"這個差別是運氣的機會（p）：{p:.3f}" + ("（小於 0.05：差別可信）" if p < 0.05 else "（不小於 0.05：還不能確定，可以多跑一些局）"),
+          ]
+          open(os.environ["GITHUB_STEP_SUMMARY"], "a").write("\n".join(out) + "\n")
+          print("\n".join(out))
+        env:
+          FUTURES: ${{ inputs.futures }}

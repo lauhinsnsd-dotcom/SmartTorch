@@ -428,12 +428,49 @@ pub fn finish(s: &GameState, seed: u32, chooser: &Chooser, picker: &Picker) -> G
     s
 }
 
+/// Not in upstream (the Chinese edition's "fair reroll", off unless switched on): a reroll's futures pick from the
+/// new offer the way the advice picks from an offer, each card played out a few times, rather than by the board
+/// value alone. The offer on screen is judged by its futures and the reroll by the board value's pick, which made
+/// a reroll look worse than it is and the advice keep a weak instrument.
+pub static FAIR_REROLL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Futures per card of the new offer, inside a reroll's future.
+const REROLL_INNER: u32 = 6;
+
+pub fn fair_reroll() -> bool {
+    FAIR_REROLL.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The card of an instrument offer (inside a reroll's future) whose few futures score best by `goal`. Its futures
+/// draw their own cards (reseeded), so the pick can't see the game's real upcoming ones.
+fn inner_pick(s: &GameState, sk: u32, rollout: &Chooser, goal: Goal) -> usize {
+    let mut best = (0usize, f64::NEG_INFINITY);
+    for i in 0..s.hand.len() {
+        let mut total = 0.0;
+        for j in 0..REROLL_INNER {
+            let sj = mix(sk, 9100 + j);
+            let end = ultimate_activity(&finish(&pick_and_confirm(&reseed(s, sj), i), sj, rollout, &Picker::Value));
+            total += if goal == Goal::Target { goal_score(end) } else { end as f64 };
+        }
+        if total > best.1 {
+            best = (i, total);
+        }
+    }
+    best.0
+}
+
 /// One future of instrument choice `c`: played to the end, its goal value and whether it reached TARGET.
 fn instrument_future(slim: &GameState, seed: u32, c: Pick, rollout: &Chooser, goal: Goal, k: u32, picker: &Picker) -> Tally {
     let sk = mix(seed, 7000 + k);
     let x = reseed(slim, sk);
     let start = match c {
-        Pick::Refresh => dispatch(&x, Action::Refresh),
+        Pick::Refresh => {
+            let r = dispatch(&x, Action::Refresh);
+            if fair_reroll() && r.phase == Phase::InstrumentSelect && !r.hand.is_empty() {
+                pick_and_confirm(&r, inner_pick(&r, sk, rollout, goal))
+            } else {
+                r
+            }
+        }
         Pick::Card(i) => pick_and_confirm(&x, i),
     };
     let end = ultimate_activity(&finish(&start, sk, rollout, picker));
