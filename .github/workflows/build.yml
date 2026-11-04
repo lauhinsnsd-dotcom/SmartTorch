@@ -1,0 +1,52 @@
+# Builds the Chinese edition on Windows on every push: the tests first, then vorax-overlay.exe, packed with its
+# start files and licences as a zip to download from the run's page (Actions → the run → Artifacts).
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        run: rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Tests
+        env:
+          # the tests don't need the release build's link-time optimisation; it only makes them slower to build
+          CARGO_PROFILE_RELEASE_LTO: "false"
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+        run: cargo test --release --workspace
+
+      - name: Build vorax-overlay.exe
+        run: cargo build --release -p vorax-overlay
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          $d = "vorax-zh"
+          New-Item -ItemType Directory $d | Out-Null
+          Copy-Item target\release\vorax-overlay.exe $d
+          Copy-Item start-zh.bat, start-zh-debug.bat $d
+          Copy-Item LICENSE "$d\LICENSE.txt"
+          Copy-Item data\fonts\OFL.txt "$d\FONT-LICENSE.txt"
+          # the Chinese guide (the only .txt at the top), under an ASCII name as make-share.bat does
+          Get-ChildItem -File -Filter *.txt | Select-Object -First 1 | ForEach-Object { Copy-Item $_.FullName "$d\README-zh.txt" }
+          Get-ChildItem $d
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vorax-zh-${{ github.sha }}
+          path: vorax-zh/
+          if-no-files-found: error
