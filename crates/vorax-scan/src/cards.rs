@@ -31,7 +31,15 @@ const EDGE_STEP: f64 = 25.0;
 const CARD_DETAIL: f64 = 0.07;
 
 fn has_card(img: &Img, c: &CardPos, k: f64) -> bool {
-    let p = patch(img, c.cx, c.cy, c.angle, Rect::new(FACE_MIDDLE.x * k, FACE_MIDDLE.y * k, FACE_MIDDLE.w * k, FACE_MIDDLE.h * k), 1.0);
+    // not in upstream: above the reference size (3840x2160), the face is sampled at the reference size, where its
+    // detail measures as it does there: at full size the same edges spread over 2.25 times the pixels, and a plain
+    // card (a Potion Kit (Large): a box and two lines) measured 0.069, short of CARD_DETAIL, so a hand of three read
+    // as a card in flight for good. Up to the reference size, as upstream.
+    let p = if k > 1.0 {
+        patch(img, c.cx, c.cy, c.angle, FACE_MIDDLE, k)
+    } else {
+        patch(img, c.cx, c.cy, c.angle, Rect::new(FACE_MIDDLE.x * k, FACE_MIDDLE.y * k, FACE_MIDDLE.w * k, FACE_MIDDLE.h * k), 1.0)
+    };
     let g = gray(&p);
     let mut edges = 0usize;
     for y in 1..p.height {
