@@ -193,28 +193,13 @@ pub fn scan_with(captured: &Img, data: &ScanData, pictures: bool, hand_dy: Optio
     }
 
     if phase != ScreenPhase::Protocol {
-        let read_left = |refs: &indexmap::IndexMap<String, Vec<Vec<f64>>>| {
-            let rf = read_text(img, &g, &l.refresh, TextKind::Refresh, refs);
-            let left: f64 = rf.as_ref().map_or(f64::NAN, |r| if r.text.is_empty() { 0.0 } else { r.text.parse::<f64>().unwrap_or(f64::NAN) });
-            let ok = rf.as_ref().is_some_and(|r| left.fract() == 0.0 && (0.0..=9.0).contains(&left) && r.score >= DIGIT_MIN);
-            (rf, left, ok)
-        };
-        let (mut rf, mut left, mut ok) = read_left(&data.digits["refresh"]);
-        // not in upstream: the Simplified Chinese client's "1" on the refresh button (a longer flag), which upstream's
-        // references don't take for anything and count as no refreshes left: tried when upstream's read isn't sure
-        if !ok && data.digits_zh.get("refresh").is_some_and(|m| !m.is_empty()) {
-            let zh = read_left(&data.digits_with_zh("refresh"));
-            if zh.2 {
-                (rf, left, ok) = zh;
-            }
-        }
-        let v = Some(if ok { left as i32 } else { 0 });
+        let (v, field) = read_refreshes(img, &g, &l, data);
         if phase == ScreenPhase::Potion {
             state.potion_refreshes = v;
         } else {
             state.instrument_refreshes = v;
         }
-        fields.insert("refreshes".into(), FieldRead { sure: ok, guess: rf.as_ref().map(|r| r.text.clone()), score: rf.as_ref().map(|r| r.score), second: rf.as_ref().map(|r| r.second) });
+        fields.insert("refreshes".into(), field);
     }
 
     let inst = read_instruments(img, &l, data);
@@ -268,4 +253,28 @@ fn find_hand(img: &Img, l: &crate::layout::Layout, data: &ScanData) -> f64 {
 fn is_tank_stat(k: &str) -> bool {
     let b = k.as_bytes();
     k.len() > 6 && k.starts_with("tank") && b[4].is_ascii_digit() && b[5] == b'.' && matches!(&k[6..], "activity" | "quantity")
+}
+
+/// The refreshes left on the refresh button: the count (0 when not read sure, as upstream counts it) and the field.
+/// Not in upstream as a function: also read by read_titles_in when a Chinese client's cards show a pick the header
+/// was taken for the protocols on (a 3840x2160 potion header read as the protocols': no refresh read at all, and
+/// the advice never refreshed).
+pub fn read_refreshes(img: &Img, g: &[f32], l: &crate::layout::Layout, data: &ScanData) -> (Option<i32>, FieldRead) {
+    let read_left = |refs: &indexmap::IndexMap<String, Vec<Vec<f64>>>| {
+        let rf = read_text(img, g, &l.refresh, TextKind::Refresh, refs);
+        let left: f64 = rf.as_ref().map_or(f64::NAN, |r| if r.text.is_empty() { 0.0 } else { r.text.parse::<f64>().unwrap_or(f64::NAN) });
+        let ok = rf.as_ref().is_some_and(|r| left.fract() == 0.0 && (0.0..=9.0).contains(&left) && r.score >= DIGIT_MIN);
+        (rf, left, ok)
+    };
+    let (mut rf, mut left, mut ok) = read_left(&data.digits["refresh"]);
+    // not in upstream: the Simplified Chinese client's "1" on the refresh button (a longer flag), which upstream's
+    // references don't take for anything and count as no refreshes left: tried when upstream's read isn't sure
+    if !ok && data.digits_zh.get("refresh").is_some_and(|m| !m.is_empty()) {
+        let zh = read_left(&data.digits_with_zh("refresh"));
+        if zh.2 {
+            (rf, left, ok) = zh;
+        }
+    }
+    let v = Some(if ok { left as i32 } else { 0 });
+    (v, FieldRead { sure: ok, guess: rf.as_ref().map(|r| r.text.clone()), score: rf.as_ref().map(|r| r.score), second: rf.as_ref().map(|r| r.second) })
 }

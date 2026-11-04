@@ -149,7 +149,16 @@ pub fn han_pick(data: &ScanData, phase: &str, text: &str) -> Option<String> {
         }
     }
     // (a hair under a fifth: 3/5 - 2/5 is 0.19999999999999996 in floating point, and "腦溶液" was left unread)
-    (matched >= 2 && ratio >= 0.5 && ratio - second >= 0.2 - 1e-9).then_some(name)
+    // not in upstream: two or more characters, in order, that no other card of this kind has any of and no card of any
+    // kind has all of, name the card even short of half of it ("疫 像" for 疫區聖母像, its statue over the middle of
+    // the title), from a third on (not "膽 汁" for 黑膽汁療法: the potions 青膽汁溶液 and 黏稠膽汁溶液 have it too)
+    let alone = matched >= 2
+        && ratio >= 1.0 / 3.0 - 1e-9
+        && second == 0.0
+        && PHASES.iter().all(|p| {
+            zh_names_for(data, p).iter().filter(|(en, _)| **en != name).all(|(_, zh)| zh.iter().all(|z| lcs(&han(z, fold), &t) < matched))
+        });
+    (alone || (matched >= 2 && ratio >= 0.5 && ratio - second >= 0.2 - 1e-9)).then_some(name)
 }
 
 /// A title not read as any card that is one of the cards upstream's data doesn't have (names_zh.json "unsupported"):
@@ -224,6 +233,8 @@ pub fn title_strip(img: &Img, c: &CardPos, k: f64) -> Img {
 /// the strip's edge under busy art (人蛹標本 read as nothing six times over, then fine once the card was raised).
 const LINE_AREA: Rect = Rect::new(-112.0, -60.0, 224.0, 42.0);
 pub const LINE_LIFTS: [f64; 2] = [0.0, -30.0];
+/// not in upstream: the title line read once more at this size when no read of it named a card
+const LINE_SMALL: f64 = 0.6;
 
 pub fn title_line(img: &Img, c: &CardPos, k: f64, lift: f64) -> Img {
     stretched(img, c, k, Rect::new(LINE_AREA.x, LINE_AREA.y + lift, LINE_AREA.w, LINE_AREA.h), 24)
@@ -356,7 +367,12 @@ pub fn read_titles_in(img: &Img, reading: Reading, data: &ScanData, read_text: &
     } else {
         PHASES.to_vec()
     };
-    let size = if read > 0 { read } else { reading.hand_size.unwrap_or(3) };
+    let mut size = if read > 0 { read } else { reading.hand_size.unwrap_or(3) };
+    // not in upstream: a potion kit's five cards fanned out, on a Chinese client whose header was taken for another
+    // pick's (3840x2160: the protocols'), where only a potion header looks for five: the fan's ends hold cards
+    if han_client && size == 3 && crate::cards::fan_size(img, &l) == 5 {
+        size = 5;
+    }
     let mut texts: Vec<String> = l.hand_at(size).iter().map(|c| if han_client { read_text(&title_strip(img, c, l.k)) } else { read_text(&title_crop(img, c, l.k)) }).collect();
     // not in upstream: a Chinese title that named no card is read again from its line alone, where it sits and then
     // raised (the card under the mouse), until one names a card
@@ -365,11 +381,23 @@ pub fn read_titles_in(img: &Img, reading: Reading, data: &ScanData, read_text: &
             if names_a_card(data, &phases, &texts[j], script) {
                 continue;
             }
+            let mut named = false;
             for lift in LINE_LIFTS {
                 let t = read_text(&title_line(img, c, l.k, lift));
                 if names_a_card(data, &phases, &t, script) {
                     texts[j] = t;
+                    named = true;
                     break;
+                }
+            }
+            // not in upstream: the line once more, smaller (Windows' reader at times keeps one character of a clear
+            // title, "溶" for 黏稠膽汁溶液 at 2560x1440 and 3840x2160 alike): another size reads differently
+            if !named {
+                let line = title_line(img, c, l.k, 0.0);
+                let (w, h) = ((line.width as f64 * LINE_SMALL) as usize, (line.height as f64 * LINE_SMALL) as usize);
+                let t = read_text(&crate::pixels::resize(&line, w.max(1), h.max(1)));
+                if names_a_card(data, &phases, &t, script) {
+                    texts[j] = t;
                 }
             }
         }
@@ -459,6 +487,16 @@ pub fn read_titles_in(img: &Img, reading: Reading, data: &ScanData, read_text: &
             state.potion_refreshes = left;
         } else {
             state.instrument_refreshes = left;
+        }
+        // not in upstream: under a header taken for the protocols', none was read: read it now
+        if header == "protocol" {
+            let (left, field) = crate::scan::read_refreshes(img, &crate::pixels::gray(img), &l, data);
+            if phase == "potion" {
+                state.potion_refreshes = left;
+            } else {
+                state.instrument_refreshes = left;
+            }
+            fields.insert("refreshes".into(), field);
         }
     }
     Reading { state, fields, problems, hand_ranks: Some((0..pos.len()).map(|j| pics.get(&j).map(|p| p.ranks.clone()).unwrap_or_default()).collect()), hand_pending: None, ..reading }

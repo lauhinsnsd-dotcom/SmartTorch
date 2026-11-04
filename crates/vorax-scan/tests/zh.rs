@@ -134,3 +134,14 @@ fn the_chinese_clients_card_pictures_are_only_for_cards_upstream_has_none_of() {
     }
     assert!(data.cards_zh.keys().all(|k| !data.cards.contains_key(k)));
 }
+
+#[test]
+fn characters_only_one_card_has_name_it_short_of_half() {
+    let data = scan_data();
+    // 疫區聖母像 with its statue over the middle of the title; 二寸顱骨釘 and 增生前額葉 half read
+    assert_eq!(han_pick(data, "instrument", "疫 。 。 / 像").as_deref(), Some("Lady of the Plague Quarter"));
+    assert_eq!(han_pick(data, "instrument", "寸 顱").as_deref(), Some("Two-Inch Skull Nail"));
+    // characters another card of any kind has too name nothing: the potions' 膽汁 isn't 黑膽汁療法, 顱骨 is two cards'
+    assert_eq!(han_pick(data, "protocol", "青 膽 汁 溶 液").as_deref(), None);
+    assert_eq!(han_pick(data, "protocol", "顱 骨").as_deref(), None);
+}
