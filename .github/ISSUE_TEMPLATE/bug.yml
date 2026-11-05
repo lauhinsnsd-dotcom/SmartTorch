@@ -1,58 +1,68 @@
-name: 問題回報
-description: 讀錯畫面、建議怪怪的、程式出錯
-title: "[問題] "
+name: 問題回報 · Report a problem
+description: 讀錯畫面、建議怪怪的、程式出錯 · A misread, odd advice, an error
+title: "[問題 / Problem] "
 body:
   - type: markdown
     attributes:
       value: |
-        感謝回報！最有用的是火炬工具箱做好的回報檔：
+        感謝回報！最有用的是 SmartTorch 做好的回報檔：
         1. 遊戲中讀錯時按 **Ctrl + Alt + B** 記下那個畫面（可以記好幾個）。
-        2. 打完後在工具箱「渴癮症助手」頁按 **回報問題**，桌面會出現「火炬工具箱回報-日期.zip」。
+        2. 打完後在 SmartTorch 主視窗按 **回報問題**，桌面會出現「SmartTorch-report-日期.zip」。
         3. 把這個 zip 拖到下面「回報檔」欄位。
+
+        Thanks! The most useful thing is SmartTorch's report file:
+        1. When something is misread, press **Ctrl + Alt + B** to set that picture aside (several are fine).
+        2. Afterwards press **Report a problem** in SmartTorch's main window: "SmartTorch-report-<time>.zip" appears on the desktop.
+        3. Drag that zip into the Report file box below.
   - type: textarea
     id: what
     attributes:
-      label: 發生了什麼
-      description: 例如「第 3 格讀成 4x474，遊戲是 1x171」、「有刷新次數卻沒有建議刷新」。可以直接貼截圖。
+      label: 發生了什麼 · What happened
+      description: 例如「第 3 格讀成 4x474，遊戲是 1x171」。可以直接貼截圖。 For example "tank 3 read as 4x474, the game shows 1x171". Screenshots welcome.
     validations:
       required: true
   - type: input
     id: when
     attributes:
-      label: 大約什麼時候、第幾回合
-      placeholder: 例如：今天 20:15 那一局，第 4 回合
+      label: 大約什麼時候、第幾回合 · When, which round
+      placeholder: 例如：今天 20:15 那一局，第 4 回合 · e.g. today 20:15, round 4
+  - type: dropdown
+    id: tool
+    attributes:
+      label: 哪個工具 · Which tool
+      options:
+        - 渴癮症助手 · Vorax helper
+        - 囚獸助手 · Tartarus helper
+        - SmartTorch 主視窗 · SmartTorch's main window
+    validations:
+      required: true
   - type: dropdown
     id: resolution
     attributes:
-      label: 遊戲解析度
+      label: 遊戲解析度 · Game resolution
       options:
         - 2560×1440
         - 3840×2160
         - 1920×1080
-        - 其他（請在下面說明）
+        - 其他（請在上面說明） · Other (say above)
     validations:
       required: true
   - type: dropdown
     id: client
     attributes:
-      label: 遊戲客戶端
+      label: 遊戲客戶端 · Game client
       options:
-        - 繁體中文
-        - 簡體中文
+        - 繁體中文 · Traditional Chinese
+        - 簡體中文 · Simplified Chinese
+        - English
     validations:
       required: true
-  - type: dropdown
-    id: mode
-    attributes:
-      label: 渴癮症助手的模式
-      options:
-        - 原作者
-        - 衝分
   - type: textarea
     id: files
     attributes:
-      label: 回報檔
+      label: 回報檔 · Report file
       description: |
-        把桌面的「火炬工具箱回報-日期.zip」拖曳到這裡（裡面有記下的畫面、記錄檔與版本）。
+        把桌面的「SmartTorch-report-日期.zip」拖曳到這裡（裡面有記下的畫面、記錄檔與版本）。
+        Drag "SmartTorch-report-<time>.zip" from the desktop here (it holds the pictures, the log and the version).
     validations:
       required: true

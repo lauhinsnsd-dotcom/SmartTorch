@@ -1,4 +1,4 @@
-//! The toolbox's main window (火炬工具箱): an ordinary window holding a WebView2 that shows ui/index.html. The page
+//! The toolbox's main window (SmartTorch): an ordinary window holding a WebView2 that shows ui/index.html. The page
 //! and the overlay talk in JSON: the page posts commands ({"cmd": ...}), window.rs answers each with the whole
 //! state (push), which the page draws. Closing the window only hides it; the tray brings it back.
 //!

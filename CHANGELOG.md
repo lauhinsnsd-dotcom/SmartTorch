@@ -1,0 +1,76 @@
+# 版本紀錄 · Changelog
+
+每個版本更新了什麼。有新版本時，SmartTorch 的更新提示也會顯示該版本的內容。
+What each version changed. When a new version is out, SmartTorch's update note shows its part.
+
+## v1.0.0
+
+**火炬之光：無限 輔助器中文版 改名為 SmartTorch，成為工具箱 · The Chinese edition is now SmartTorch, a toolbox**
+- 新的主視窗：左邊選工具，右邊看狀態、統計與設定；右下角只剩一個圖示。按 ✕ 只會縮到右下角。 A main window: the tools on the left, their state, statistics and settings on the right; one tray icon. ✕ only puts it in the tray.
+- 介面有繁體、简体、English 三種（第一次開啟依 Windows 語言選擇）；英文時遊戲上的提示也用英文卡名。 Traditional Chinese, Simplified Chinese or English (from Windows' language at the first start); in English the hint over the game uses the cards' English names.
+- 開機自動啟動 SmartTorch；開遊戲時自動啟動工具，關遊戲時自動停止。 Starts with Windows; the tools start with the game and stop when it closes.
+- 第一次使用的教學、疑難排解、關於頁；完全免費的聲明。 Getting started, troubleshooting and about pages; a note that it's free.
+
+**囚獸助手 · Tartarus helper**
+- 整合 glcoder 的 Tartarus Solver：自行下載後，SmartTorch 會自動找到它、在背後啟動並收起它的視窗，按「設定」才顯示；顯示局數與彩色囚犯統計，可在 SmartTorch 重設；有新版本時提示。 glcoder's Tartarus Solver: download it and SmartTorch finds it, starts it with its window out of the way (Settings shows it), shows its runs and Chromatic Inmates (reset in SmartTorch) and tells you when it has a new version.
+
+**渴癮症助手 · Vorax helper**
+- 主視窗顯示連接狀態（遊戲視窗與解析度、遊戲日誌、文字辨識、最後讀取），遊戲日誌可按「選擇…」手動指定，不必再改 bat 檔。 The main window shows the connection (game window and resolution, the game's log, text reading, the last read); Choose… sets the log by hand, no more bat files.
+- 模式、雪莉等級、提示與讀取結果開關都在主視窗；可「停止」與「啟動」。 Mode, Shelley level and the hint switches are in the main window, with Stop and Start.
+- 統計（局數、彩箱、平均分數）與「清除紀錄」。 Statistics (runs, reached 840k, mean score) and Clear records.
+
+**回報問題 · Reporting a problem**
+- 不必再先開除錯模式：讀錯時按 Ctrl + Alt + B 記下畫面，之後按「回報問題」，桌面會出現回報用的 zip，並開啟回報頁。 No debug start needed: Ctrl + Alt + B sets the misread picture aside, then Report a problem makes a zip on the desktop and opens the report page.
+
+**其他 · Other**
+- 新圖示；程式改名為 SmartTorch.exe；不再需要 start-zh.bat。 A new icon; the program is SmartTorch.exe; start-zh.bat is gone.
+- 從 v0.2.2-zh.3 會自動更新到這一版，設定會保留。 v0.2.2-zh.3 updates itself to this version, keeping its settings.
+
+## v0.2.2-zh.3
+
+**不必再設定遊戲路徑**
+- 工具會從開啟中的遊戲找到它的安裝位置，再找到遊戲日誌，不論 Steam 或官方啟動器、裝在哪個磁碟；也會檢查各磁碟常見的安裝資料夾。
+- `start-zh.bat` 第 5 行的 `GAMELOG=` 預設留空，只有系統匣顯示「找不到遊戲日誌」時才需要填。之前填好路徑的人照樣可用。
+- 「找不到遊戲日誌」的說明改為一步一步的做法。
+
+**其他**
+- 衝分模式不再標示「測試中」。
+- 說明文件新增「讀不到、讀錯時怎麼辦」，一步一步排除，仍不行再回報。
+- 補充：系統匣圖示在 Windows 11 可能收在「^」裡；`vorax-overlay.exe` 就是中文版主程式（檔名和原作者相同）。
+
+## v0.2.2-zh.2
+
+**簡體中文客戶端**
+- 正式支援簡體中文客戶端（2560×1440、3840×2160 皆已測試）。
+- 修正簡體客戶端培養槽和刷新按鈕上的「1」被讀成「4」或讀不到、卡名中的「-」被當成國字「一」。
+
+**3840×2160（4K）**
+- 修正藥劑階段的標題被認成手術方案：之前因此讀不到刷新次數（工具以為沒得刷新，從不建議刷新）、藥劑箱的 5 張卡只讀到 3 張。
+- 修正內容簡單的卡（例如「藥劑箱（大）」）被當成「卡片還在移動」，整回合都不給建議。
+- 修正蠟燭火光被當成數字，讓培養槽讀錯（例如 5×24 讀成 15×8）；數字正確但字形略不同時不再一直顯示「未讀到」。
+
+**辨識**
+- 「疫區聖母像」被雕像擋住標題時也能辨認。
+- 卡名讀不到時，會再用不同大小讀一次。
+
+**更新與回報**
+- 自動更新改為本專案的中文版：有新版本時系統匣會提示，點「立即更新」即可（會檢查檔案的 SHA-256）。v0.2.2-zh.1 的使用者需要手動下載本版一次。
+- 新增 GitHub「問題回報」表單。
+
+## v0.2.2-zh.1
+
+第一個公開版本，以原作者 DinoRaos/vorax-solver-rs v0.2.2 為基礎。
+
+**讀取中文客戶端**
+- 用 Windows 內建的中文文字辨識讀卡名，比對中文卡名表（85 張卡），簡繁視為同字，漏讀一兩個字仍能辨認；分不清時標為「未知」，不亂猜。
+- 培養槽、回合數的讀取針對中文介面修正；抱卵蝶、異形螯針加入圖片樣本，卡名讀不到時也能辨認。
+- 有卡或培養槽沒讀到時，1 秒後自動重讀，並在提示框列出「未讀到」的位置。
+
+**讓玩家核對讀取結果**
+- 每格培養槽下方顯示讀到的種族與活性×數量，提示框下方顯示讀到的卡，刷新按鈕旁顯示讀到的刷新次數（沒讀到顯示橘色「？」）。Ctrl + Alt + D 切換顯示。
+
+**計算**
+- 新增「衝分」模式：彩箱機率差不多時選平均分數較高的選項，不再接近 840k 就收手。預設仍是原作者的「保守」模式。
+
+**介面**
+- 提示框、系統匣選單、說明、對局紀錄全部中文化；對局紀錄可拖曳改變大小、Ctrl + 滾輪縮放，並附實戰統計（預計與實際的比較）。

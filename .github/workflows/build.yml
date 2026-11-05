@@ -1,7 +1,9 @@
-# Builds the Chinese edition on Windows on every push: the tests first, then vorax-overlay.exe, packed with its
-# start files and licences as a zip to download from the run's page (Actions → the run → Artifacts). A version
-# tag (v0.2.2-zh.1 and so on, or a release made on GitHub's page with a new tag) also puts that zip on the
-# release, with its SHA-256.
+# Builds SmartTorch on Windows on every push: the tests first, then SmartTorch.exe (the vorax-overlay crate's
+# program), packed with its guide and licences as a zip to download from the run's page (Actions → the run →
+# Artifacts). A version tag (v1.0.0 and so on, or a release made on GitHub's page with a new tag) also puts the
+# zip and the exe on the release, with their SHA-256. The exe goes up twice: as SmartTorch.exe, and as
+# vorax-overlay.exe for the Chinese edition's versions before SmartTorch (v0.2.2-zh.N), whose updater asks for that
+# name.
 name: build
 
 on:
@@ -41,26 +43,24 @@ jobs:
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
         run: cargo test --release --workspace
 
-      - name: Build vorax-overlay.exe
+      - name: Build SmartTorch.exe
         run: cargo build --release -p vorax-overlay
 
       - name: Pack
         shell: pwsh
         run: |
-          $d = "vorax-zh"
+          $d = "SmartTorch"
           New-Item -ItemType Directory $d | Out-Null
-          Copy-Item target\release\vorax-overlay.exe $d
-          Copy-Item start-zh.bat, start-zh-debug.bat $d
+          Copy-Item target\release\vorax-overlay.exe "$d\SmartTorch.exe"
+          Copy-Item README.txt $d
           Copy-Item LICENSE "$d\LICENSE.txt"
           Copy-Item data\fonts\OFL.txt "$d\FONT-LICENSE.txt"
-          # the Chinese guide (the only .txt at the top), under an ASCII name as make-share.bat does
-          Get-ChildItem -File -Filter *.txt | Select-Object -First 1 | ForEach-Object { Copy-Item $_.FullName "$d\README-zh.txt" }
           Get-ChildItem $d
 
       - uses: actions/upload-artifact@v4
         with:
-          name: vorax-zh-${{ github.sha }}
-          path: vorax-zh/
+          name: SmartTorch-${{ github.sha }}
+          path: SmartTorch/
           if-no-files-found: error
 
       - name: Release (tags only)
@@ -70,14 +70,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
-          $zip = "vorax-zh-$tag.zip"
-          Compress-Archive -Path vorax-zh\* -DestinationPath $zip
+          $zip = "SmartTorch-$tag.zip"
+          Compress-Archive -Path SmartTorch\* -DestinationPath $zip
+          # the same program under the name the Chinese edition's updater asks for
+          Copy-Item SmartTorch\SmartTorch.exe vorax-overlay.exe
           $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          $exeHash = (Get-FileHash vorax-zh\vorax-overlay.exe -Algorithm SHA256).Hash.ToLower()
-          # this version's lines from CHANGELOG-zh.md first: the tray's update card shows them
+          $exeHash = (Get-FileHash SmartTorch\SmartTorch.exe -Algorithm SHA256).Hash.ToLower()
+          # this version's lines from CHANGELOG.md first: the update note shows them
           $what = @()
           $in = $false
-          foreach ($line in (Get-Content CHANGELOG-zh.md -Encoding utf8)) {
+          foreach ($line in (Get-Content CHANGELOG.md -Encoding utf8)) {
             if ($line -match '^## ') { $in = ($line.Trim() -eq "## $tag"); continue }
             if ($in -and $line.Trim() -ne '') { $what += $line }
           }
@@ -85,14 +87,17 @@ jobs:
           $notes = @"
           $whatText
 
-          火炬之光：無限「渴癮症」輔助器中文版（非官方）。下載下方的 $zip，解壓縮後依照 README-zh.txt 使用。
-          更新內容與兩種模式的比較請看專案首頁的 README。
+          SmartTorch：火炬之光：無限 的免費輔助工具箱（非官方）。下載下方的 $zip，解壓縮後點兩下 SmartTorch.exe。
+          SmartTorch, a free helper toolbox for Torchlight: Infinite (unofficial). Download $zip below, unpack it and run SmartTorch.exe.
+
+          完全免費，官方下載只有這裡。Free: this is the only official download.
 
           第一次執行時 Windows 可能顯示「Windows 已保護您的電腦」（程式沒有數位簽章），請點「其他資訊」→「仍要執行」。
+          The first time, Windows may show "Windows protected your PC" (the program isn't code-signed): click More info → Run anyway.
 
           SHA-256
           - ${zip}: $zipHash
-          - vorax-overlay.exe: $exeHash
+          - SmartTorch.exe, vorax-overlay.exe: $exeHash
           "@
           $notes = ($notes -split "`n" | ForEach-Object { $_ -replace '^          ', '' }) -join "`n"
           Set-Content -Path notes.md -Value $notes -Encoding utf8
@@ -100,9 +105,9 @@ jobs:
           # gets a release of its own
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $zip vorax-zh\vorax-overlay.exe --clobber
+            gh release upload $tag $zip SmartTorch\SmartTorch.exe vorax-overlay.exe --clobber
             gh release edit $tag --notes-file notes.md
           } else {
-            gh release create $tag $zip vorax-zh\vorax-overlay.exe --title "$tag" --notes-file notes.md
+            gh release create $tag $zip SmartTorch\SmartTorch.exe vorax-overlay.exe --title "SmartTorch $tag" --notes-file notes.md
           }
           exit $LASTEXITCODE

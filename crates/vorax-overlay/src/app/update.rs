@@ -1,5 +1,5 @@
-//! Updating the overlay from this project's GitHub releases (not in upstream: the Chinese edition's own,
-//! lauhinsnsd-dotcom/vorax-solver-rs-zh, versions v0.2.2-zh.1 and on): at start it asks for the latest release, and when it's
+//! Updating SmartTorch from its own GitHub releases (not in upstream: the Chinese edition's, now SmartTorch,
+//! lauhinsnsd-dotcom/SmartTorch, versions v0.2.2-zh.1 and on; SmartTorch.exe, vorax-overlay.exe before v1.0.0): at start it asks for the latest release, and when it's
 //! newer the tray menu offers it with its notes. The new overlay.exe is downloaded next to this one, checked against
 //! the SHA-256 GitHub gives for it, and swapped in: a running exe can't be overwritten but can be renamed, so this
 //! one moves aside (deleted on the next start) and the new one starts in its place.
@@ -12,9 +12,9 @@ use windows::Foundation::{AsyncOperationProgressHandler, Uri};
 use windows::Storage::Streams::DataReader;
 use windows::Web::Http::{HttpClient, HttpProgress};
 
-pub const REPO: &str = "lauhinsnsd-dotcom/vorax-solver-rs-zh";
+pub const REPO: &str = "lauhinsnsd-dotcom/SmartTorch";
 /// The asset of a release that is the overlay.
-const ASSET: &str = "vorax-overlay.exe";
+const ASSET: &str = "SmartTorch.exe";
 
 /// This build's version. A release's build is given its tag's (VORAX_VERSION at build time, "0.2.2-zh.1"); others
 /// are upstream's (0.2.2), offered any release of the Chinese edition. A test build can claim an older one.
@@ -58,7 +58,7 @@ fn plain_notes(body: &str) -> String {
     let mut out = Vec::new();
     for line in body.lines() {
         let l = line.trim();
-        if l.starts_with("Download `") || l.starts_with("Built from") || l.starts_with("| File") || l.starts_with("SHA-256") || l.starts_with("第一次執行") {
+        if l.starts_with("Download `") || l.starts_with("Built from") || l.starts_with("| File") || l.starts_with("SHA-256") || l.starts_with("第一次執行") || l.starts_with("SmartTorch：") {
             break;
         }
         if l.starts_with('>') {

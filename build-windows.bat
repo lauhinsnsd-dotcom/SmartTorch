@@ -23,7 +23,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [3/3] Building vorax-overlay.exe (a few minutes the first time)...
+echo [3/3] Building SmartTorch.exe (a few minutes the first time)...
 rustup default stable >nul 2>nul
 rem files unzipped over an older copy can keep old dates: rebuild the reader and the overlay every time
 cargo clean --release -p vorax-scan -p vorax-overlay >nul 2>nul
@@ -34,8 +34,8 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-copy /y "target\release\vorax-overlay.exe" "%~dp0vorax-overlay.exe" >nul
+copy /y "target\release\vorax-overlay.exe" "%~dp0SmartTorch.exe" >nul
 echo.
-echo Done: %~dp0vorax-overlay.exe
-echo Start it with start-zh.bat
+echo Done: %~dp0SmartTorch.exe
+echo Start it by double-clicking SmartTorch.exe
 pause

@@ -992,7 +992,7 @@ fn from_hub(text: &str) {
                         s.report = Some(zip.clone());
                     });
                     // the form first, then the zip to drag onto it
-                    super::hub::open_url("https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh/issues/new?template=bug.yml");
+                    super::hub::open_url("https://github.com/lauhinsnsd-dotcom/SmartTorch/issues/new?template=bug.yml");
                     super::report::show_in_folder(&zip);
                 }
                 Err(e) => note(&format!("report not packed: {e}")),

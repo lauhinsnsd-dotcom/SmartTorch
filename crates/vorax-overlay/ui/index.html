@@ -127,7 +127,7 @@ const L = (zh, english) => (en() ? english : zh);
 const P = (x) => (en() ? ` (${x})` : `（${x}）`);
 const sw = (on, cmd, key, label) => `<button class="sw ${on ? "on" : ""}" aria-pressed="${on}" aria-label="${esc(label)}" data-cmd="${cmd}" data-key="${key}" data-value="${!on}"><i></i></button>`;
 const dot = (c) => `<span class="dot ${c}"></span>`;
-const REPO = "https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh";
+const REPO = "https://github.com/lauhinsnsd-dotcom/SmartTorch";
 
 function nav() {
   const v = S ? S.vorax : null;
@@ -333,7 +333,7 @@ function about() {
   return `
   <section class="card" aria-label="${L("關於", "About")}">
     <div><div style="font-size:18px;font-weight:700">SmartTorch v${esc(S.version)}</div>
-      <div class="tip" style="margin-top:10px"><b>${L("SmartTorch 完全免費。", "SmartTorch is free.")}</b>${L("官方下載只有 GitHub：github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh。如果你是付費取得的，你被騙了，請向賣家退款並回報。", " The only official download is on GitHub: github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh. If you paid for it, you were scammed: ask the seller for a refund and report them.")}</div>
+      <div class="tip" style="margin-top:10px"><b>${L("SmartTorch 完全免費。", "SmartTorch is free.")}</b>${L("官方下載只有 GitHub：github.com/lauhinsnsd-dotcom/SmartTorch。如果你是付費取得的，你被騙了，請向賣家退款並回報。", " The only official download is on GitHub: github.com/lauhinsnsd-dotcom/SmartTorch. If you paid for it, you were scammed: ask the seller for a refund and report them.")}</div>
       <p class="para" style="margin-top:10px">${L("由肥可製作。非官方工具，只讀取遊戲畫面與日誌，不會操作遊戲、不讀取記憶體。是否使用第三方工具請自行判斷。", "Made by 肥可. Not affiliated with the game: it only reads the game's picture and log, never plays for you or reads its memory. Whether to use third-party tools is your call.")}</p>
       <div class="row" style="gap:16px;margin-top:8px;font-size:14px">
         <a href="#" data-url="${REPO}">GitHub</a>
