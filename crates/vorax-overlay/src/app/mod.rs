@@ -162,11 +162,20 @@ pub fn run(args: &[String]) {
     }
     update::clean_up();
     sys::note(&format!("Vorax overlay v{} started (Intern Shelley level {}, odds of {})", update::current(), settings.shelley, vorax::data().odds));
-    // the toolbox's words: Traditional or Simplified, chosen once from Windows' language on the first run
-    if settings.script == crate::zh::AUTO && !settings.first_run_done {
-        settings.script = if sys::windows_simplified() { crate::zh::SIMPLIFIED } else { crate::zh::TRADITIONAL };
+    // SmartTorch's language: Traditional, Simplified or English, from Windows' language at the first start (a
+    // Chinese edition updated keeps its Chinese)
+    if settings.lang.is_empty() {
+        settings.lang = if settings.first_run_done || settings.script != crate::zh::AUTO {
+            if settings.script == crate::zh::SIMPLIFIED { "sc".into() } else { "tc".into() }
+        } else {
+            sys::windows_lang().into()
+        };
+        if settings.script == crate::zh::AUTO {
+            settings.script = if settings.lang == "sc" { crate::zh::SIMPLIFIED } else { crate::zh::TRADITIONAL };
+        }
         settings.save();
     }
+    crate::zh::set_english(settings.lang == "en");
     crate::zh::set_mode(settings.script);
     vorax::bot::MEAN_GOAL.store(settings.aggressive, std::sync::atomic::Ordering::Relaxed);
     // the mode every start (not only the aggressive one), so the runs window can count each mode's games

@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<title>火炬工具箱</title>
+<title>SmartTorch</title>
 <style>
 :root {
   --bg: #14161b; --side: #171920; --card: #1d2027; --card2: #23262e; --line: #2b2f38; --line2: #3a3f4a;
@@ -91,7 +91,7 @@ h2 { margin: 0; font-size: 16px; color: var(--gold2); }
   <nav aria-label="主選單">
     <div class="brand">
       <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#e3b25a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c2 3 5 5 5 9a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5 1-7.5z"/></svg>
-      <div><b>火炬工具箱</b><small>by 肥可</small></div>
+      <div><b>SmartTorch</b><small>by 肥可</small></div>
     </div>
     <div class="navs" id="navs"></div>
     <div class="navfoot" id="navfoot"></div>
@@ -115,161 +115,169 @@ function toSc(t) {
   return out;
 }
 
-let S = null;           // the state, from the toolbox
+let S = null;           // the state, from SmartTorch
 let page = "vorax";     // vorax | tartarus | settings
 let tab = "general";    // the settings' tab
 const send = (o) => window.chrome && window.chrome.webview && window.chrome.webview.postMessage(o);
 const esc = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const en = () => S && S.lang === "en";
+// the words in the interface's language: Chinese (Traditional; turned into Simplified after drawing) or English
+const L = (zh, english) => (en() ? english : zh);
+// a note in brackets, as each language writes them
+const P = (x) => (en() ? ` (${x})` : `（${x}）`);
 const sw = (on, cmd, key, label) => `<button class="sw ${on ? "on" : ""}" aria-pressed="${on}" aria-label="${esc(label)}" data-cmd="${cmd}" data-key="${key}" data-value="${!on}"><i></i></button>`;
 const dot = (c) => `<span class="dot ${c}"></span>`;
+const REPO = "https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh";
 
 function nav() {
   const v = S ? S.vorax : null;
+  const t = S && S.tartarus;
   const items = [
-    ["vorax", "渴癮症助手", v ? (v.running ? "g" : "n") : ""],
-    ["tartarus", "囚獸助手", S && S.tartarus && S.tartarus.installed ? (S.tartarus.running ? "g" : "n") : ""],
-    ["settings", "設定", S && S.update ? "newdot" : ""],
+    ["vorax", L("渴癮症助手", "Vorax helper"), v ? (v.running ? "g" : "n") : ""],
+    ["tartarus", L("囚獸助手", "Tartarus helper"), t && t.installed ? (t.running ? "g" : "n") : ""],
+    ["settings", L("設定", "Settings"), S && S.update ? "newdot" : ""],
   ];
   document.getElementById("navs").innerHTML = items.map(([id, label, d]) =>
-    `<button class="nav ${page === id ? "on" : ""}" data-page="${id}" aria-current="${page === id ? "page" : "false"}"><span>${label}</span>${d === "newdot" ? '<span class="newdot" title="有新版本"></span>' : d ? dot(d) : ""}</button>`).join("");
+    `<button class="nav ${page === id ? "on" : ""}" data-page="${id}" aria-current="${page === id ? "page" : "false"}"><span>${label}</span>${d === "newdot" ? `<span class="newdot" title="${L("有新版本", "Update available")}"></span>` : d ? dot(d) : ""}</button>`).join("");
   const game = v && v.game.open;
-  const sc = S && S.script === "sc";
+  const lang = S ? S.lang : "tc";
+  const opt = (id, label) => `<button class="${lang === id ? "on" : ""}" aria-pressed="${lang === id}" data-cmd="set" data-key="lang" data-value="${id}">${label}</button>`;
   document.getElementById("navfoot").innerHTML =
-    `<div class="row" style="font-size:13px;color:var(--soft);gap:8px">${dot(game ? "g" : "n")}${game ? "遊戲已開啟" : "遊戲未開啟"}</div>
-     <div class="note" style="font-size:12px;line-height:1.6">完全免費 · 官方下載只有 <a href="#" data-url="https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh/releases">GitHub</a></div>
-     <div class="seg" role="group" aria-label="介面文字" data-noconv>
-       <button class="${sc ? "" : "on"}" aria-pressed="${!sc}" data-cmd="set" data-key="script" data-value="tc">繁體</button>
-       <button class="${sc ? "on" : ""}" aria-pressed="${sc}" data-cmd="set" data-key="script" data-value="sc">简体</button>
-     </div>`;
+    `<div class="row" style="font-size:13px;color:var(--soft);gap:8px">${dot(game ? "g" : "n")}${game ? L("遊戲已開啟", "Game is open") : L("遊戲未開啟", "Game not open")}</div>
+     <div class="note" style="font-size:12px;line-height:1.6">${L("完全免費 · 官方下載只有", "Free · only official download:")} <a href="#" data-url="${REPO}/releases">GitHub</a></div>
+     <div class="seg" role="group" aria-label="Language" data-noconv>${opt("tc", "繁體")}${opt("sc", "简体")}${opt("en", "EN")}</div>`;
 }
 
 function ago(s) {
+  if (en()) return s < 60 ? `${s} s ago` : s < 3600 ? `${Math.floor(s / 60)} min ago` : `${Math.floor(s / 3600)} h ago`;
   if (s < 60) return `${s} 秒前`;
   if (s < 3600) return `${Math.floor(s / 60)} 分鐘前`;
   return `${Math.floor(s / 3600)} 小時前`;
 }
 
 function ocrName(l) {
-  if (/^zh-(Hant|TW|HK|MO)/i.test(l)) return "中文（繁體）";
-  if (/^zh/i.test(l)) return "中文（簡體）";
-  if (/^en/i.test(l)) return "英文";
+  if (/^zh-(Hant|TW|HK|MO)/i.test(l)) return L("中文（繁體）", "Chinese (Traditional)");
+  if (/^zh/i.test(l)) return L("中文（簡體）", "Chinese (Simplified)");
+  if (/^en/i.test(l)) return L("英文", "English");
   return l;
 }
 
 function vorax() {
   const v = S.vorax;
-  const supported = (w, h) => (w === 2560 && h === 1440) || (w === 3840 && h === 2160);
+  // a Chinese client is read at 2560×1440 and 3840×2160 only (tested); an English one as upstream reads it, at any size
+  const chinese = typeof v.ocr === "string" && /^zh/i.test(v.ocr);
+  const supported = (w, h) => !chinese || (w === 2560 && h === 1440) || (w === 3840 && h === 2160);
   let gameRow;
-  if (!v.game.open) gameRow = `${dot("n")}未開啟遊戲`;
-  else if (v.game.fullScreen) gameRow = `${dot("r")}遊戲是獨佔全螢幕：請改為無邊框或視窗 <button class="link" data-goto="help">怎麼做</button>`;
-  else if (v.game.w && !supported(v.game.w, v.game.h)) gameRow = `${dot("y")}已連接（${v.game.w}×${v.game.h}）：此解析度未測試，可能讀不準`;
-  else gameRow = `${dot("g")}已連接${v.game.w ? `（${v.game.w}×${v.game.h}）` : ""}`;
-  const L = v.log;
+  if (!v.game.open) gameRow = `${dot("n")}${L("未開啟遊戲", "The game isn't open")}`;
+  else if (v.game.fullScreen) gameRow = `${dot("r")}${L("遊戲是獨佔全螢幕：請改為無邊框或視窗", "The game is in exclusive full screen: switch to borderless or windowed")} <button class="link" data-goto="help">${L("怎麼做", "How")}</button>`;
+  else if (v.game.w && !supported(v.game.w, v.game.h)) gameRow = `${dot("y")}${L("已連接", "Connected")}${P(`${v.game.w}×${v.game.h}`)}${L("：此解析度未測試，可能讀不準", ": this resolution isn't tested with the Chinese client and may be misread")}`;
+  else gameRow = `${dot("g")}${L("已連接", "Connected")}${v.game.w ? P(`${v.game.w}×${v.game.h}`) : ""}`;
+  const lg = v.log;
   const logText = {
-    on: [dot("g"), "已開啟"], checking: [dot("y"), "檢查中…"], nogame: [dot("n"), "等待遊戲開啟"],
-    off: [dot("r"), "遊戲沒有寫入日誌：請在遊戲中開啟日誌"], missing: [dot("r"), "找不到遊戲日誌"],
-  }[L.state] || [dot("n"), "—"];
-  const how = L.path ? (L.manual ? "（手動選擇）" : "（自動找到）") : "";
-  const fix = (L.state === "off" || L.state === "missing") ? ` <button class="link" data-goto="help">怎麼辦</button>` : "";
-  const ocr = v.ocr === null ? `${dot("n")}檢查中…` : v.ocr === false ? `${dot("r")}未安裝：只能用卡面圖案辨認` : `${dot("g")}${ocrName(v.ocr)}已安裝`;
-  const last = v.last ? `${dot(v.last.warn ? "y" : "g")}${esc(v.last.text)}（${ago(v.last.ago)}）` : `${dot("n")}尚未讀取`;
+    on: [dot("g"), L("已開啟", "On")], checking: [dot("y"), L("檢查中…", "Checking…")], nogame: [dot("n"), L("等待遊戲開啟", "Waiting for the game")],
+    off: [dot("r"), L("遊戲沒有寫入日誌：請在遊戲中開啟日誌", "The game isn't writing its log: turn it on in the game")], missing: [dot("r"), L("找不到遊戲日誌", "Game log not found")],
+  }[lg.state] || [dot("n"), "—"];
+  const how = lg.path ? (lg.manual ? L("（手動選擇）", " (chosen)") : L("（自動找到）", " (found)")) : "";
+  const fix = (lg.state === "off" || lg.state === "missing") ? ` <button class="link" data-goto="help">${L("怎麼辦", "What to do")}</button>` : "";
+  const ocr = v.ocr === null ? `${dot("n")}${L("檢查中…", "Checking…")}` : v.ocr === false ? `${dot("r")}${L("未安裝：只能用卡面圖案辨認", "Not installed: cards are told by their pictures only")}` : `${dot("g")}${ocrName(v.ocr)}${L("已安裝", " installed")}`;
+  const last = v.last ? `${dot(v.last.warn ? "y" : "g")}${esc(v.last.text)}${P(ago(v.last.ago))}` : `${dot("n")}${L("尚未讀取", "Nothing read yet")}`;
   const st = v.stats;
-  const modeName = v.mode === "mean" ? "衝分" : "原作者";
+  const modeName = v.mode === "mean" ? L("衝分", "push score") : L("原作者", "upstream's");
+  const mean = st.games ? (en() ? Math.round(st.mean * 10) + "k" : st.mean.toFixed(1) + " 萬") : "—";
   return `
   <div class="head">
-    <div><h1>渴癮症助手</h1><div class="sub">手術準備：建議下一步，培養槽下方標示讀取結果</div></div>
-    <div class="row"><span class="badge ${v.running ? "run" : "stop"}">${v.running ? "執行中" : "已停止"}</span>
-      <button class="btn big ${v.running ? "" : "gold"}" data-cmd="vorax" data-on="${!v.running}">${v.running ? "停止" : "啟動"}</button></div>
+    <div><h1>${L("渴癮症助手", "Vorax helper")}</h1><div class="sub">${L("手術準備：建議下一步，培養槽下方標示讀取結果", "Surgical Preparation: the next move, with what was read under each tank")}</div></div>
+    <div class="row"><span class="badge ${v.running ? "run" : "stop"}">${v.running ? L("執行中", "Running") : L("已停止", "Stopped")}</span>
+      <button class="btn big ${v.running ? "" : "gold"}" data-cmd="vorax" data-on="${!v.running}">${v.running ? L("停止", "Stop") : L("啟動", "Start")}</button></div>
   </div>
   <div class="stats">
-    <div class="stat"><b>${st.games}</b><span>打完的局（${modeName}）</span></div>
-    <div class="stat"><b class="gold">${st.rainbow}</b><span>彩箱局數</span></div>
-    <div class="stat"><b>${st.games ? st.mean.toFixed(1) + " 萬" : "—"}</b><span>平均分數</span></div>
+    <div class="stat"><b>${st.games}</b><span>${L("打完的局", "Runs played")}${P(modeName)}</span></div>
+    <div class="stat"><b class="gold">${st.rainbow}</b><span>${L("彩箱局數", "Reached 840k")}</span></div>
+    <div class="stat"><b>${mean}</b><span>${L("平均分數", "Mean score")}</span></div>
   </div>
   <div class="row" style="justify-content:flex-end;gap:8px;margin-top:-8px">
-    <button class="btn" data-cmd="runs">打開對局紀錄</button>
-    <button class="btn" data-confirm="clearRecords">清除紀錄</button>
+    <button class="btn" data-cmd="runs">${L("打開對局紀錄", "Your runs")}</button>
+    <button class="btn" data-confirm="clearRecords">${L("清除紀錄", "Clear records")}</button>
   </div>
-  <section class="card" aria-label="連接狀態">
-    <h2>連接狀態</h2>
+  <section class="card" aria-label="${L("連接狀態", "Connection")}">
+    <h2>${L("連接狀態", "Connection")}</h2>
     <div class="grid3">
-      <div class="k">遊戲視窗</div><div class="v">${gameRow}</div><div></div>
-      <div class="k">遊戲日誌</div>
-      <div style="min-width:0"><div class="v">${logText[0]}${logText[1]}${how}${fix}</div>${L.path ? `<div class="path">${esc(L.path)}</div>` : ""}</div>
-      <div class="row" style="gap:6px"><button class="btn small" data-cmd="chooseLog">選擇…</button><button class="btn small" data-cmd="autoLog">自動</button></div>
-      <div class="k">文字辨識</div><div class="v">${ocr}</div><div></div>
-      <div class="k">最後讀取</div><div class="v">${last}</div><div></div>
+      <div class="k">${L("遊戲視窗", "Game window")}</div><div class="v">${gameRow}</div><div></div>
+      <div class="k">${L("遊戲日誌", "Game log")}</div>
+      <div style="min-width:0"><div class="v">${logText[0]}${logText[1]}${how}${fix}</div>${lg.path ? `<div class="path">${esc(lg.path)}</div>` : ""}</div>
+      <div class="row" style="gap:6px"><button class="btn small" data-cmd="chooseLog">${L("選擇…", "Choose…")}</button><button class="btn small" data-cmd="autoLog">${L("自動", "Auto")}</button></div>
+      <div class="k">${L("文字辨識", "Text reading")}</div><div class="v">${ocr}</div><div></div>
+      <div class="k">${L("最後讀取", "Last read")}</div><div class="v">${last}</div><div></div>
     </div>
-    <div class="tip"><b>讀不到或讀錯？</b> ① 按 Ctrl + Alt + X 重新讀取 → ② 仍然不對，按 Ctrl + Alt + B 記下這個畫面 → ③ 之後按下方「回報問題」。紅點的處理方法見 <button class="link" data-goto="help">設定 › 疑難排解</button></div>
+    <div class="tip"><b>${L("讀不到或讀錯？", "Not read, or misread?")}</b> ${L("① 按 Ctrl + Alt + X 重新讀取 → ② 仍然不對，按 Ctrl + Alt + B 記下這個畫面 → ③ 之後按下方「回報問題」。紅點的處理方法見", "① Press Ctrl + Alt + X to read again → ② still wrong: Ctrl + Alt + B sets the picture aside → ③ later, press Report a problem below. For a red dot, see")} <button class="link" data-goto="help">${L("設定 › 疑難排解", "Settings › Troubleshooting")}</button></div>
     <div class="row" style="justify-content:space-between;gap:8px">
-      <div class="row" style="gap:8px">${v.marked ? `<span class="note">已記下 ${v.marked} 個畫面</span>
-        <button class="btn small" data-cmd="markedOpen">開啟資料夾</button>
-        <button class="btn small" data-confirm="markedClear">清除</button>` : `<span class="note">尚未記下畫面</span>`}</div>
-      <button class="btn goldline" data-cmd="report">回報問題</button>
+      <div class="row" style="gap:8px">${v.marked ? `<span class="note">${L(`已記下 ${v.marked} 個畫面`, `${v.marked} picture${v.marked > 1 ? "s" : ""} set aside`)}</span>
+        <button class="btn small" data-cmd="markedOpen">${L("開啟資料夾", "Open folder")}</button>
+        <button class="btn small" data-confirm="markedClear">${L("清除", "Clear")}</button>` : `<span class="note">${L("尚未記下畫面", "No pictures set aside")}</span>`}</div>
+      <button class="btn goldline" data-cmd="report">${L("回報問題", "Report a problem")}</button>
     </div>
-    ${v.report ? `<div class="tip">已在桌面建立 <b>${esc(v.report.split("\\").pop())}</b>，並在瀏覽器開啟了回報頁面：把這個 zip 拖進頁面的「回報檔」欄，寫下發生了什麼即可（需要登入 GitHub）。</div>` : ""}
+    ${v.report ? `<div class="tip">${L("已在桌面建立", "Made on the desktop:")} <b>${esc(v.report.split("\\").pop())}</b>${L("，並在瀏覽器開啟了回報頁面：把這個 zip 拖進頁面的「回報檔」欄，寫下發生了什麼即可（需要登入 GitHub）。", ", and the report page is open in the browser: drag the zip into its 回報檔 (report file) box and say what happened (a GitHub account is needed).")}</div>` : ""}
   </section>
-  <section class="card" aria-label="渴癮症助手設定">
-    <h2>設定</h2>
-    <div><div class="label">模式</div><div class="row" style="gap:8px">
-      <button class="pill ${v.mode === "safe" ? "on" : ""}" data-cmd="set" data-key="mode" data-value="safe">原作者</button>
-      <button class="pill ${v.mode === "mean" ? "on" : ""}" data-cmd="set" data-key="mode" data-value="mean">衝分</button>
-    </div><div class="note" style="margin-top:8px">${v.mode === "mean" ? "彩箱機率差不多時，選平均分數較高的選項。" : "只追求戰前達 840k（彩箱）的機會。"}</div></div>
-    <div><div class="label">實習生雪莉等級（手術用具可刷新 ${v.rerolls} 次）</div><div class="row" style="gap:8px">
+  <section class="card" aria-label="${L("渴癮症助手設定", "Vorax helper settings")}">
+    <h2>${L("設定", "Settings")}</h2>
+    <div><div class="label">${L("模式", "Mode")}</div><div class="row" style="gap:8px">
+      <button class="pill ${v.mode === "safe" ? "on" : ""}" data-cmd="set" data-key="mode" data-value="safe">${L("原作者", "Upstream's")}</button>
+      <button class="pill ${v.mode === "mean" ? "on" : ""}" data-cmd="set" data-key="mode" data-value="mean">${L("衝分", "Push score")}</button>
+    </div><div class="note" style="margin-top:8px">${v.mode === "mean" ? L("彩箱機率差不多時，選平均分數較高的選項。", "When the odds of 840k are about even, picks the higher average score.") : L("只追求戰前達 840k（彩箱）的機會。", "Only the odds of reaching 840k before the battle count.")}</div></div>
+    <div><div class="label">${L(`實習生雪莉等級（手術用具可刷新 ${v.rerolls} 次）`, `Intern Shelley level (${v.rerolls} instrument reroll${v.rerolls === 1 ? "" : "s"})`)}</div><div class="row" style="gap:8px">
       ${[1, 2, 3, 4, 5, 6].map((n) => `<button class="pill ${v.shelley === n ? "on" : ""}" data-cmd="set" data-key="shelley" data-value="${n}">${n}</button>`).join("")}
     </div></div>
-    <div class="swrow">${sw(v.shown, "set", "shown", "顯示提示")}<span>顯示提示</span><span class="note">Ctrl + Alt + V</span></div>
-    <div class="swrow">${sw(v.showRead, "set", "showRead", "顯示讀取結果")}<span>顯示讀取結果</span><span class="note">培養槽下方小框、卡一行、刷新次數</span></div>
+    <div class="swrow">${sw(v.shown, "set", "shown", L("顯示提示", "Show hints"))}<span>${L("顯示提示", "Show hints")}</span><span class="note">Ctrl + Alt + V</span></div>
+    <div class="swrow">${sw(v.showRead, "set", "showRead", L("顯示讀取結果", "Show what was read"))}<span>${L("顯示讀取結果", "Show what was read")}</span><span class="note">${L("培養槽下方小框、卡一行、刷新次數", "under each tank, the cards, the rerolls")}</span></div>
     <div class="keys">
-      <div class="kk">Ctrl + Alt + X</div><div>立即讀取一次畫面</div>
-      <div class="kk">Ctrl + Alt + V</div><div>顯示或隱藏提示</div>
-      <div class="kk">Ctrl + Alt + D</div><div>顯示或隱藏讀取結果</div>
-      <div class="kk">Ctrl + Alt + B</div><div>記下讀錯的畫面（之後一併回報）</div>
-      <div class="kk">Ctrl + Alt + Q</div><div>關閉工具箱</div>
+      <div class="kk">Ctrl + Alt + X</div><div>${L("立即讀取一次畫面", "Read the board now")}</div>
+      <div class="kk">Ctrl + Alt + V</div><div>${L("顯示或隱藏提示", "Show or hide the hints")}</div>
+      <div class="kk">Ctrl + Alt + D</div><div>${L("顯示或隱藏讀取結果", "Show or hide what was read")}</div>
+      <div class="kk">Ctrl + Alt + B</div><div>${L("記下讀錯的畫面（之後一併回報）", "Set a misread picture aside (for the report)")}</div>
+      <div class="kk">Ctrl + Alt + Q</div><div>${L("關閉 SmartTorch", "Quit SmartTorch")}</div>
     </div>
-  </section>
-`;
+  </section>`;
 }
 
 function tartarus() {
   const t = S.tartarus;
-  const head = (right) => `<div class="head"><div><h1>囚獸助手</h1><div class="sub">塔爾塔洛斯監獄：框出最佳一步與預計寶箱</div></div>${right || ""}</div>`;
+  const head = (right) => `<div class="head"><div><h1>${L("囚獸助手", "Tartarus helper")}</h1><div class="sub">${L("塔爾塔洛斯監獄：框出最佳一步與預計寶箱", "Tartarus Prison: the best move framed, with the chests it leads to")}</div></div>${right || ""}</div>`;
   const err = t.error ? `<div class="tip" style="color:var(--text)">${dot("r")} ${esc(t.error)}</div>` : "";
   if (!t.installed) {
-    return head() + err + `<section class="card" aria-label="安裝囚獸助手">
-      <div style="font-size:18px;font-weight:700">尚未找到囚獸助手</div>
-      <p class="para">囚獸助手是 glcoder 開發的 Tartarus Solver（MIT 授權），請到它的 GitHub 下載：</p>
-      <div class="step"><div class="num">1</div><div><p style="margin:0">按「前往下載頁」，下載 <b>TartarusSolver-版本-full.zip</b>（電腦已裝 .NET 9 可選較小的另一個）。</p></div></div>
-      <div class="step"><div class="num">2</div><div><p style="margin:0">解壓到任何資料夾，開啟一次裡面的 TartarusSolver.exe，工具箱會自動找到它；或按「選擇位置」指定。</p></div></div>
-      <div class="row" style="gap:8px"><button class="btn gold big" data-cmd="tartarusDownload">前往下載頁</button>
-        <button class="btn big" data-cmd="tartarusChoose">選擇位置</button></div></section>`;
+    return head() + err + `<section class="card" aria-label="${L("找不到囚獸助手", "Tartarus Solver not found")}">
+      <div style="font-size:18px;font-weight:700">${L("尚未找到囚獸助手", "Tartarus Solver not found yet")}</div>
+      <p class="para">${L("囚獸助手是 glcoder 開發的 Tartarus Solver（MIT 授權），請到它的 GitHub 下載：", "The Tartarus helper is glcoder's Tartarus Solver (MIT licence). Download it from its GitHub:")}</p>
+      <div class="step"><div class="num">1</div><div><p style="margin:0">${L("按「前往下載頁」，下載 <b>TartarusSolver-版本-full.zip</b>（電腦已裝 .NET 9 可選較小的另一個）。", "Press Download page and get <b>TartarusSolver-version-full.zip</b> (with .NET 9 installed, the smaller one will do).")}</p></div></div>
+      <div class="step"><div class="num">2</div><div><p style="margin:0">${L("解壓到任何資料夾，開啟一次裡面的 TartarusSolver.exe，SmartTorch 會自動找到它；或按「選擇位置」指定。", "Unpack it anywhere and run its TartarusSolver.exe once: SmartTorch finds it. Or press Choose its place.")}</p></div></div>
+      <div class="row" style="gap:8px"><button class="btn gold big" data-cmd="tartarusDownload">${L("前往下載頁", "Download page")}</button>
+        <button class="btn big" data-cmd="tartarusChoose">${L("選擇位置", "Choose its place")}</button></div></section>`;
   }
   const on = t.running || t.want;
   const st = t.stats;
   const per = st && st.runs ? (st.chromatic / st.runs).toFixed(2) : "—";
   const ver = t.version ? `v${esc(t.version)}` : "—";
-  const upd = t.newer ? ` → <span style="color:var(--gold2)">v${esc(t.latest)} 可更新</span>` : (t.latest ? ` <span class="note">· 已是最新版本</span>` : "");
-  return head(`<div class="row"><span class="badge ${on ? "run" : "stop"}">${t.running ? "執行中" : t.want ? "啟動中…" : "已停止"}</span>
-      <button class="btn big ${on ? "" : "gold"}" data-cmd="tartarus" data-on="${!on}">${on ? "停止" : "啟動"}</button></div>`) + err + `
+  const upd = t.newer ? ` → <span style="color:var(--gold2)">v${esc(t.latest)} ${L("可更新", "is out")}</span>` : (t.latest ? ` <span class="note">· ${L("已是最新版本", "the latest")}</span>` : "");
+  return head(`<div class="row"><span class="badge ${on ? "run" : "stop"}">${t.running ? L("執行中", "Running") : t.want ? L("啟動中…", "Starting…") : L("已停止", "Stopped")}</span>
+      <button class="btn big ${on ? "" : "gold"}" data-cmd="tartarus" data-on="${!on}">${on ? L("停止", "Stop") : L("啟動", "Start")}</button></div>`) + err + `
   <div class="stats">
-    <div class="stat"><b>${st ? st.runs : "—"}</b><span>局數</span></div>
-    <div class="stat"><b class="gold">${st ? st.chromatic : "—"}</b><span>彩色囚犯</span></div>
-    <div class="stat"><b>${per}</b><span>每局平均</span></div>
+    <div class="stat"><b>${st ? st.runs : "—"}</b><span>${L("局數", "Runs")}</span></div>
+    <div class="stat"><b class="gold">${st ? st.chromatic : "—"}</b><span>${L("彩色囚犯", "Chromatic Inmates")}</span></div>
+    <div class="stat"><b>${per}</b><span>${L("每局平均", "Per run")}</span></div>
   </div>
-  <div class="row" style="justify-content:flex-end"><button class="btn" data-confirm="tartarusReset">重設統計</button></div>
-  <section class="card" aria-label="囚獸助手狀態">
+  <div class="row" style="justify-content:flex-end;margin-top:-8px"><button class="btn" data-confirm="tartarusReset">${L("重設統計", "Reset statistics")}</button></div>
+  <section class="card" aria-label="${L("囚獸助手狀態", "Tartarus helper")}">
     <div class="grid2">
-      <div class="k">版本</div><div>${ver}${upd}</div>
-      <div class="k">安裝位置</div><div class="path" style="margin:0;font-size:14px;color:var(--soft)">${esc(t.exe)}</div>
+      <div class="k">${L("版本", "Version")}</div><div>${ver}${upd}</div>
+      <div class="k">${L("安裝位置", "Installed at")}</div><div class="path" style="margin:0;font-size:14px;color:var(--soft)">${esc(t.exe)}</div>
     </div>
     <div class="row" style="gap:8px">
-      <button class="btn big ${t.shown ? "goldline" : ""}" data-cmd="tartarusShow" data-on="${!t.shown}" aria-pressed="${t.shown}" ${t.running ? "" : "disabled"}>${t.shown ? "收起設定" : "設定"}</button>
-      ${t.newer && t.running ? `<button class="btn gold big" data-cmd="tartarusShow" data-on="true">更新到 v${esc(t.latest)}</button>` : ""}
-      <button class="btn small" data-cmd="tartarusChoose" style="margin-left:auto">更改位置…</button>
+      <button class="btn big ${t.shown ? "goldline" : ""}" data-cmd="tartarusShow" data-on="${!t.shown}" aria-pressed="${t.shown}" ${t.running ? "" : "disabled"}>${t.shown ? L("收起設定", "Hide settings") : L("設定", "Settings")}</button>
+      ${t.newer && t.running ? `<button class="btn gold big" data-cmd="tartarusShow" data-on="true">${L("更新到", "Update to")} v${esc(t.latest)}</button>` : ""}
+      <button class="btn small" data-cmd="tartarusChoose" style="margin-left:auto">${L("更改位置…", "Change place…")}</button>
     </div>
-    ${t.shown ? `<div class="note" style="color:var(--gold2)">已打開囚獸助手的設定視窗，再按一次「收起設定」收起。直接按它的 ✕ 會關閉它（工具箱會在幾秒後自動重新開啟）。</div>` : ""}
-    ${t.newer && t.shown ? `<div class="note" style="color:var(--gold2)">在它的視窗右下方按「Update to ${esc(t.latest)}」，它會自己更新並重新開啟。</div>` : ""}
-    ${t.running ? "" : `<div class="note">啟動後才能打開它的設定視窗。</div>`}
+    ${t.shown ? `<div class="note" style="color:var(--gold2)">${L("已打開囚獸助手的設定視窗，再按一次「收起設定」收起。直接按它的 ✕ 會關閉它（SmartTorch 會在幾秒後自動重新開啟）。", "Its window is open: press Hide settings to put it away. Its own ✕ closes it (SmartTorch starts it again a few seconds later).")}</div>` : ""}
+    ${t.newer && t.shown ? `<div class="note" style="color:var(--gold2)">${L(`在它的視窗右下方按「Update to ${esc(t.latest)}」，它會自己更新並重新開啟。`, `Press "Update to ${esc(t.latest)}" at the bottom right of its window: it updates itself and starts again.`)}</div>` : ""}
+    ${t.running ? "" : `<div class="note">${L("啟動後才能打開它的設定視窗。", "Start it to open its settings.")}</div>`}
   </section>`;
 }
 
@@ -277,71 +285,72 @@ function general() {
   const u = S.update;
   let upd;
   if (S.updating != null) {
-    upd = `<div class="row" style="justify-content:space-between"><div>正在更新到 v${esc(u ? u.version : "")}… ${Math.round(S.updating * 100)}%</div></div>
-           <div class="bar"><i style="width:${Math.round(S.updating * 100)}%"></i></div><div class="note">下載後會檢查檔案並重新啟動</div>`;
+    upd = `<div class="row" style="justify-content:space-between"><div>${L("正在更新到", "Updating to")} v${esc(u ? u.version : "")}… ${Math.round(S.updating * 100)}%</div></div>
+           <div class="bar"><i style="width:${Math.round(S.updating * 100)}%"></i></div><div class="note">${L("下載後會檢查檔案並重新啟動", "Checked once downloaded, then restarted")}</div>`;
   } else if (u) {
-    upd = `<div class="row" style="justify-content:space-between"><div>火炬工具箱 v${esc(S.version)} <span style="color:var(--gold2)">· 有新版本 v${esc(u.version)}</span></div>
-             <button class="btn gold" data-cmd="update">立即更新</button></div>
-           <div class="label" style="margin:0">更新內容</div><div class="notes">${esc(u.notes)}</div>`;
+    upd = `<div class="row" style="justify-content:space-between"><div>SmartTorch v${esc(S.version)} <span style="color:var(--gold2)">· ${L("有新版本", "new version")} v${esc(u.version)}</span></div>
+             <button class="btn gold" data-cmd="update">${L("立即更新", "Update now")}</button></div>
+           <div class="label" style="margin:0">${L("更新內容", "What's new")}</div><div class="notes">${esc(u.notes)}</div>`;
   } else {
-    upd = `<div class="row" style="justify-content:space-between"><div>火炬工具箱 v${esc(S.version)} <span class="note">${S.upToDate ? "· 已是最新版本" : ""}</span></div>
-             <button class="btn" data-cmd="checkUpdate">檢查更新</button></div>`;
+    upd = `<div class="row" style="justify-content:space-between"><div>SmartTorch v${esc(S.version)} <span class="note">${S.upToDate ? L("· 已是最新版本", "· the latest") : ""}</span></div>
+             <button class="btn" data-cmd="checkUpdate">${L("檢查更新", "Check for updates")}</button></div>`;
   }
   return `
-  <section class="card" aria-label="一般">
-    <div class="swrow">${sw(S.boot, "set", "boot", "開機時自動啟動工具箱")}<span>開機時自動啟動工具箱</span><span class="note">縮在右下角，不會彈出視窗</span></div>
-    <div class="swrow">${sw(S.autoGame, "set", "autoGame", "開遊戲時自動啟動工具，關遊戲時自動停止")}<span>開遊戲時自動啟動工具，關遊戲時自動停止</span></div>
-    <p class="para sep">按視窗的 ✕ 只會縮到右下角，工具繼續執行。要完全關閉，請在右下角圖示按右鍵 →「結束」。</p>
+  <section class="card" aria-label="${L("一般", "General")}">
+    <div class="swrow">${sw(S.boot, "set", "boot", L("開機時自動啟動 SmartTorch", "Start SmartTorch with Windows"))}<span>${L("開機時自動啟動 SmartTorch", "Start SmartTorch with Windows")}</span><span class="note">${L("縮在右下角，不會彈出視窗", "in the tray, no window")}</span></div>
+    <div class="swrow">${sw(S.autoGame, "set", "autoGame", L("開遊戲時自動啟動工具，關遊戲時自動停止", "Start the tools with the game, stop them when it closes"))}<span>${L("開遊戲時自動啟動工具，關遊戲時自動停止", "Start the tools with the game, stop them when it closes")}</span></div>
+    <p class="para sep">${L("按視窗的 ✕ 只會縮到右下角，工具繼續執行。要完全關閉，請在右下角圖示按右鍵 →「結束」。", "The window's ✕ only puts it in the tray: the tools keep running. To close SmartTorch, right-click its tray icon → Quit.")}</p>
     <div class="sep" style="display:flex;flex-direction:column;gap:12px">${upd}</div>
   </section>`;
 }
 
 function guide() {
+  const v = S.vorax;
   return `
-  <section class="card" aria-label="教學">
-    <div class="note" style="font-size:14px">第一次使用請完成以下幾步</div>
-    <div class="step"><div class="num">1</div><div><b>在遊戲中開啟日誌</b><p>按 Esc →「帳號相關」→「開啟日誌」，然後登出再登入。</p></div></div>
-    <div class="step"><div class="num">2</div><div><b>遊戲使用無邊框或視窗模式，解析度 2560×1440 或 3840×2160</b><p>提示要疊在遊戲上，獨佔全螢幕看不到。渴癮症助手目前只在這兩種解析度測試過，其他解析度（例如 1920×1080、21:9）可能讀不準。</p></div></div>
-    <div class="step"><div class="num">3</div><div><b>選擇實習生雪莉等級</b><p>決定手術用具可以刷新幾次，設錯會影響建議。目前：${S.vorax.shelley} 級（可刷新 ${S.vorax.rerolls} 次）。</p>
-      <div class="row" style="gap:8px;margin-top:10px">${[1, 2, 3, 4, 5, 6].map((n) => `<button class="pill ${S.vorax.shelley === n ? "on" : ""}" data-cmd="set" data-key="shelley" data-value="${n}">${n}</button>`).join("")}</div></div></div>
-    <p class="para sep">之後只要開遊戲，提示框就會出現在遊戲畫面上，照著做即可。</p>
-    <p class="para">本工具完全免費，官方下載只有 GitHub。如果你是付費取得的，你被騙了。</p>
-    ${S.firstRunDone ? "" : `<button class="btn gold big" style="align-self:flex-start" data-cmd="firstRunDone" data-then="vorax">完成，開始使用</button>`}
+  <section class="card" aria-label="${L("教學", "Getting started")}">
+    <div class="note" style="font-size:14px">${L("第一次使用請完成以下幾步", "The first time, do these")}</div>
+    <div class="step"><div class="num">1</div><div><b>${L("在遊戲中開啟日誌", "Turn on the game's log")}</b><p>${L("按 Esc →「帳號相關」→「開啟日誌」，然後登出再登入。", "Press Esc → Account Related → Enable Log, then log out and in again.")}</p></div></div>
+    <div class="step"><div class="num">2</div><div><b>${L("遊戲使用無邊框或視窗模式", "Play borderless or windowed")}</b><p>${L("提示要疊在遊戲上，獨佔全螢幕看不到。中文客戶端目前只在 2560×1440 和 3840×2160 測試過，其他解析度（例如 1920×1080、21:9）可能讀不準。", "The hints sit over the game: exclusive full screen hides them. A Chinese client is only tested at 2560×1440 and 3840×2160; an English client is read as the original Vorax solver reads it.")}</p></div></div>
+    <div class="step"><div class="num">3</div><div><b>${L("選擇實習生雪莉等級", "Set your Intern Shelley level")}</b><p>${L(`決定手術用具可以刷新幾次，設錯會影響建議。目前：${v.shelley} 級（可刷新 ${v.rerolls} 次）。`, `It sets how often instruments can be rerolled; a wrong level skews the advice. Now: level ${v.shelley} (${v.rerolls} reroll${v.rerolls === 1 ? "" : "s"}).`)}</p>
+      <div class="row" style="gap:8px;margin-top:10px">${[1, 2, 3, 4, 5, 6].map((n) => `<button class="pill ${v.shelley === n ? "on" : ""}" data-cmd="set" data-key="shelley" data-value="${n}">${n}</button>`).join("")}</div></div></div>
+    <p class="para sep">${L("之後只要開遊戲，提示框就會出現在遊戲畫面上，照著做即可。", "Then just play: the hint shows over the game.")}</p>
+    <p class="para">${L("SmartTorch 完全免費，官方下載只有 GitHub。如果你是付費取得的，你被騙了。", "SmartTorch is free; the only official download is on GitHub. If you paid for it, you were scammed.")}</p>
+    ${S.firstRunDone ? "" : `<button class="btn gold big" style="align-self:flex-start" data-cmd="firstRunDone" data-then="vorax">${L("完成，開始使用", "Done, let's go")}</button>`}
   </section>`;
 }
 
 function help() {
   const items = [
-    ["找不到遊戲日誌", "先開啟遊戲。仍然找不到：確認已在遊戲中開啟日誌（Esc →「帳號相關」→「開啟日誌」，再登出登入），或在「渴癮症助手」頁按「選擇…」，選遊戲資料夾裡的 Game\\UE_game\\TorchLight\\Saved\\Logs\\UE_game.log。"],
-    ["找到日誌，但遊戲沒有寫入", "遊戲尚未開啟日誌。按 Esc →「帳號相關」→「開啟日誌」，然後登出再登入，狀態就會變綠。"],
-    ["解析度不在支援範圍", "渴癮症助手目前支援 2560×1440 與 3840×2160。其他解析度可能讀錯，建議改用其中一種；若想支援你的解析度，請用 Ctrl + Alt + B 記下畫面並回報問題。"],
-    ["遊戲是獨佔全螢幕", "提示無法疊在獨佔全螢幕上。請在遊戲設定把顯示模式改為「無邊框」或「視窗」。"],
+    [L("找不到遊戲日誌", "Game log not found"), L("先開啟遊戲。仍然找不到：確認已在遊戲中開啟日誌（Esc →「帳號相關」→「開啟日誌」，再登出登入），或在「渴癮症助手」頁按「選擇…」，選遊戲資料夾裡的 Game\\UE_game\\TorchLight\\Saved\\Logs\\UE_game.log。", "Start the game first. Still not found: make sure the game's log is on (Esc → Account Related → Enable Log, then log in again), or press Choose… on the Vorax helper page and pick Game\\UE_game\\TorchLight\\Saved\\Logs\\UE_game.log in the game's folder.")],
+    [L("找到日誌，但遊戲沒有寫入", "The log is found, but the game isn't writing it"), L("遊戲尚未開啟日誌。按 Esc →「帳號相關」→「開啟日誌」，然後登出再登入，狀態就會變綠。", "The game's log is off. Press Esc → Account Related → Enable Log, then log out and in again: the dot turns green.")],
+    [L("解析度不在支援範圍", "A resolution that isn't supported"), L("中文客戶端目前支援 2560×1440 與 3840×2160。其他解析度可能讀錯，建議改用其中一種；若想支援你的解析度，請用 Ctrl + Alt + B 記下畫面並回報問題。", "A Chinese client is supported at 2560×1440 and 3840×2160; others may be misread. To have yours supported, set pictures aside with Ctrl + Alt + B and report a problem.")],
+    [L("遊戲是獨佔全螢幕", "The game is in exclusive full screen"), L("提示無法疊在獨佔全螢幕上。請在遊戲設定把顯示模式改為「無邊框」或「視窗」。", "The hints can't show over exclusive full screen. Switch the game's display mode to borderless or windowed.")],
   ];
   return items.map(([t, b]) => `<div class="problem"><b>${dot("r")}${t}</b><p>${esc(b)}</p></div>`).join("");
 }
 
 function about() {
   return `
-  <section class="card" aria-label="關於">
-    <div><div style="font-size:18px;font-weight:700">火炬工具箱 v${esc(S.version)}</div>
-      <div class="tip" style="margin-top:10px"><b>本工具完全免費。</b>官方下載只有 GitHub：github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh。如果你是付費取得的，你被騙了，請向賣家退款並回報。</div>
-      <p class="para" style="margin-top:10px">由肥可製作。非官方工具，只讀取遊戲畫面與日誌，不會操作遊戲、不讀取記憶體。是否使用第三方工具請自行判斷。</p>
+  <section class="card" aria-label="${L("關於", "About")}">
+    <div><div style="font-size:18px;font-weight:700">SmartTorch v${esc(S.version)}</div>
+      <div class="tip" style="margin-top:10px"><b>${L("SmartTorch 完全免費。", "SmartTorch is free.")}</b>${L("官方下載只有 GitHub：github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh。如果你是付費取得的，你被騙了，請向賣家退款並回報。", " The only official download is on GitHub: github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh. If you paid for it, you were scammed: ask the seller for a refund and report them.")}</div>
+      <p class="para" style="margin-top:10px">${L("由肥可製作。非官方工具，只讀取遊戲畫面與日誌，不會操作遊戲、不讀取記憶體。是否使用第三方工具請自行判斷。", "Made by 肥可. Not affiliated with the game: it only reads the game's picture and log, never plays for you or reads its memory. Whether to use third-party tools is your call.")}</p>
       <div class="row" style="gap:16px;margin-top:8px;font-size:14px">
-        <a href="#" data-url="https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh">GitHub</a>
-        <a href="#" data-url="https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh/issues/new/choose">回報問題</a></div></div>
+        <a href="#" data-url="${REPO}">GitHub</a>
+        <a href="#" data-url="${REPO}/issues/new/choose">${L("回報問題", "Report a problem")}</a></div></div>
     <div class="sep" style="display:flex;flex-direction:column;gap:12px;font-size:14px">
-      <div class="note" style="font-size:14px">感謝以下作者（皆為 MIT 授權）</div>
-      <div><b>渴癮症助手</b>：計算與讀取基於 DinoRaos 的 <a href="#" data-url="https://github.com/DinoRaos/vorax-solver-rs">vorax-solver-rs</a>；其前身為 tidewarden 的 Vorax Solver（2026-10-22 版）與 Moebing 的 <a href="#" data-url="https://github.com/Moebing/Torchlight-Infinite-SS11-Vorax-simulator">渴癮症模擬器</a>。中文支援與介面由肥可製作。</div>
-      <div><b>囚獸助手</b>：glcoder 的 <a href="#" data-url="https://github.com/glcoder/TartarusSolver">Tartarus Solver</a>，原樣使用：由玩家自行下載，工具箱負責啟動與顯示。</div>
-      <div class="note" style="font-size:14px">字型：Noto Sans TC／SC（SIL Open Font License 1.1）。授權全文見工具箱資料夾內的 LICENSE.txt 與 FONT-LICENSE.txt。</div>
+      <div class="note" style="font-size:14px">${L("感謝以下作者（皆為 MIT 授權）", "With thanks to (all MIT licensed)")}</div>
+      <div><b>${L("渴癮症助手", "Vorax helper")}</b>${L("：計算與讀取基於 DinoRaos 的", ": the solver and the screen reader are DinoRaos's")} <a href="#" data-url="https://github.com/DinoRaos/vorax-solver-rs">vorax-solver-rs</a>${L("；其前身為 tidewarden 的 Vorax Solver（2026-10-22 版）與 Moebing 的", ", from tidewarden's Vorax Solver (its 2026-10-22 version) and Moebing's")} <a href="#" data-url="https://github.com/Moebing/Torchlight-Infinite-SS11-Vorax-simulator">${L("渴癮症模擬器", "Vorax simulator")}</a>${L("。中文支援與介面由肥可製作。", ". Chinese support and this interface by 肥可.")}</div>
+      <div><b>${L("囚獸助手", "Tartarus helper")}</b>${L("：glcoder 的", ": glcoder's")} <a href="#" data-url="https://github.com/glcoder/TartarusSolver">Tartarus Solver</a>${L("，原樣使用：由玩家自行下載，SmartTorch 負責啟動與顯示。", ", used as it is: you download it, SmartTorch starts and shows it.")}</div>
+      <div class="note" style="font-size:14px">${L("字型：Noto Sans TC／SC（SIL Open Font License 1.1）。授權全文見資料夾內的 LICENSE.txt 與 FONT-LICENSE.txt。", "Fonts: Noto Sans TC/SC (SIL Open Font License 1.1). The licences in full: LICENSE.txt and FONT-LICENSE.txt in its folder.")}</div>
     </div>
   </section>`;
 }
 
 function settings() {
-  const tabs = [["general", "一般"], ["guide", "教學"], ["help", "疑難排解"], ["about", "關於"]];
+  const tabs = [["general", L("一般", "General")], ["guide", L("教學", "Getting started")], ["help", L("疑難排解", "Troubleshooting")], ["about", L("關於", "About")]];
   const body = { general, guide, help, about }[tab]();
-  return `<h1>設定</h1>
+  return `<h1>${L("設定", "Settings")}</h1>
     <div class="tabs" role="tablist">${tabs.map(([id, l]) => `<button class="tab ${tab === id ? "on" : ""}" role="tab" aria-selected="${tab === id}" data-tab="${id}">${l}</button>`).join("")}</div>
     ${body}`;
 }
@@ -350,7 +359,7 @@ function convert(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
-  for (const n of nodes) if (/[㐀-鿿]/.test(n.nodeValue) && !n.parentElement.closest("[data-noconv]")) n.nodeValue = toSc(n.nodeValue);
+  for (const n of nodes) if (/[\u3400-\u9fff]/.test(n.nodeValue) && !n.parentElement.closest("[data-noconv]")) n.nodeValue = toSc(n.nodeValue);
   for (const el of root.querySelectorAll("[aria-label],[title]")) {
     for (const a of ["aria-label", "title"]) if (el.hasAttribute(a)) el.setAttribute(a, toSc(el.getAttribute(a)));
   }
@@ -358,16 +367,15 @@ function convert(root) {
 
 function render() {
   if (!S) return;
-  const sc = S.script === "sc";
+  const sc = S.lang === "sc";
   document.body.classList.toggle("sc", sc);
-  document.documentElement.lang = sc ? "zh-Hans" : "zh-Hant";
+  document.documentElement.lang = en() ? "en" : sc ? "zh-Hans" : "zh-Hant";
   nav();
   const main = document.getElementById("main");
   const top = main.scrollTop;
   main.innerHTML = page === "vorax" ? vorax() : page === "tartarus" ? tartarus() : settings();
   main.scrollTop = top;
-  if (sc) { convert(document.querySelector("nav")); convert(main); document.title = toSc("火炬工具箱"); }
-  else document.title = "火炬工具箱";
+  if (sc) { convert(document.querySelector("nav")); convert(main); }
 }
 
 document.addEventListener("click", (e) => {
@@ -379,8 +387,12 @@ document.addEventListener("click", (e) => {
   if (t.dataset.goto) { page = "settings"; tab = t.dataset.goto; render(); document.getElementById("main").scrollTop = 0; return; }
   if (t.dataset.url) { send({ cmd: "open", url: t.dataset.url }); return; }
   if (t.dataset.confirm) {
-    const words = { clearRecords: "清除紀錄？對局紀錄、統計、記錄檔和記下的畫面都會刪除，之後從零開始。（有問題要回報的話，請先按「回報問題」再清除。）", markedClear: "清除記下的畫面？（回報問題後會自動清除，平常不必手動清除）", tartarusReset: "重設囚獸助手的統計？工具箱之後只計算從現在開始的局數（囚獸助手自己的紀錄不會改動）。" }[t.dataset.confirm];
-    if (confirm(S.script === "sc" ? toSc(words) : words)) send({ cmd: t.dataset.confirm });
+    const words = {
+      clearRecords: L("清除紀錄？對局紀錄、統計、記錄檔和記下的畫面都會刪除，之後從零開始。（有問題要回報的話，請先按「回報問題」再清除。）", "Clear records? Your runs, the statistics, the log and the pictures set aside are deleted, and it starts from zero. (Report a problem first if you have one.)"),
+      markedClear: L("清除記下的畫面？（回報問題後會自動清除，平常不必手動清除）", "Throw away the pictures set aside? (Reporting a problem clears them by itself.)"),
+      tartarusReset: L("重設囚獸助手的統計？SmartTorch 之後只計算從現在開始的局數（囚獸助手自己的紀錄不會改動）。", "Reset the Tartarus statistics? SmartTorch counts from now on (Tartarus Solver's own record isn't touched)."),
+    }[t.dataset.confirm];
+    if (confirm(S.lang === "sc" ? toSc(words) : words)) send({ cmd: t.dataset.confirm });
     return;
   }
   const cmd = t.dataset.cmd;

@@ -5,7 +5,7 @@
 //! fonts by dev/make_font_zh.py).
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::OnceLock;
 
 /// The tray's setting: 0 auto, 1 Traditional, 2 Simplified.
@@ -17,6 +17,22 @@ static SEEN: AtomicU8 = AtomicU8::new(0);
 pub const AUTO: u8 = 0;
 pub const TRADITIONAL: u8 = 1;
 pub const SIMPLIFIED: u8 = 2;
+
+/// SmartTorch's English interface: the overlay's hint with the cards' English names, the menus and notes in English.
+static ENGLISH: AtomicBool = AtomicBool::new(false);
+
+pub fn set_english(on: bool) {
+    ENGLISH.store(on, Ordering::Relaxed);
+}
+
+pub fn english() -> bool {
+    ENGLISH.load(Ordering::Relaxed)
+}
+
+/// The words in the interface's language: `zh` (Traditional, shown in Simplified when that's on) or `en`.
+pub fn tr(zh: &str, en: &str) -> String {
+    if english() { en.to_string() } else { zh.to_string() }
+}
 
 pub fn set_mode(m: u8) {
     MODE.store(m.min(2), Ordering::Relaxed);

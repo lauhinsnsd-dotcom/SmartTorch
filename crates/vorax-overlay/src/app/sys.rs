@@ -266,6 +266,9 @@ pub struct Settings {
     /// the toolbox: 囚獸助手's program chosen by hand (else the toolbox's own install)
     #[serde(default)]
     pub tartarus_exe: Option<PathBuf>,
+    /// SmartTorch's interface language: "tc", "sc" or "en" (empty: from Windows' language at the first start)
+    #[serde(default)]
+    pub lang: String,
     /// the toolbox: 囚獸助手's statistics (runs, Chromatic) when they were reset here: shown from then on (its own
     /// file is never changed)
     #[serde(default)]
@@ -278,7 +281,7 @@ fn yes() -> bool {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, stats_since: 0.0, first_run_done: false, close_hint_shown: false, tartarus_exe: None, tartarus_base: None }
+        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, stats_since: 0.0, first_run_done: false, close_hint_shown: false, tartarus_exe: None, tartarus_base: None, lang: String::new() }
     }
 }
 
@@ -322,24 +325,32 @@ pub fn set_start_with_windows(on: bool) {
 
 /// Windows' file dialog for the game's log (UE_game.log); None when cancelled.
 pub fn choose_log(owner: Option<Hwnd>) -> Option<PathBuf> {
-    choose_file(owner, w!("選擇遊戲日誌 UE_game.log"), &[(w!("遊戲日誌 (UE_game.log)"), w!("UE_game.log")), (w!("記錄檔 (*.log)"), w!("*.log"))])
+    let t = crate::zh::tr("選擇遊戲日誌 UE_game.log", "Choose the game's log, UE_game.log");
+    let a = crate::zh::tr("遊戲日誌 (UE_game.log)", "Game log (UE_game.log)");
+    let b = crate::zh::tr("記錄檔 (*.log)", "Log files (*.log)");
+    choose_file(owner, &t, &[(&a, "UE_game.log"), (&b, "*.log")])
 }
 
 /// Windows' file dialog for 囚獸助手's program (TartarusSolver.exe); None when cancelled.
 pub fn choose_tartarus(owner: Option<Hwnd>) -> Option<PathBuf> {
-    choose_file(owner, w!("選擇囚獸助手 TartarusSolver.exe"), &[(w!("囚獸助手 (TartarusSolver.exe)"), w!("TartarusSolver.exe"))])
+    let t = crate::zh::tr("選擇囚獸助手 TartarusSolver.exe", "Choose Tartarus Solver, TartarusSolver.exe");
+    let a = crate::zh::tr("囚獸助手 (TartarusSolver.exe)", "Tartarus Solver (TartarusSolver.exe)");
+    choose_file(owner, &t, &[(&a, "TartarusSolver.exe")])
 }
 
 /// Windows' file dialog: a file to open, of these kinds (name, pattern); None when cancelled.
-fn choose_file(owner: Option<Hwnd>, title: PCWSTR, kinds: &[(PCWSTR, PCWSTR)]) -> Option<PathBuf> {
+fn choose_file(owner: Option<Hwnd>, title: &str, kinds: &[(&str, &str)]) -> Option<PathBuf> {
+    let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+    let title = wide(title);
+    let kinds: Vec<(Vec<u16>, Vec<u16>)> = kinds.iter().map(|(n, p)| (wide(n), wide(p))).collect();
     use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_INPROC_SERVER};
     use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
     use windows::Win32::UI::Shell::{FileOpenDialog, IFileOpenDialog, SIGDN_FILESYSPATH};
     unsafe {
         let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
-        let filters: Vec<COMDLG_FILTERSPEC> = kinds.iter().map(|&(n, p)| COMDLG_FILTERSPEC { pszName: n, pszSpec: p }).collect();
+        let filters: Vec<COMDLG_FILTERSPEC> = kinds.iter().map(|(n, p)| COMDLG_FILTERSPEC { pszName: PCWSTR(n.as_ptr()), pszSpec: PCWSTR(p.as_ptr()) }).collect();
         let _ = dialog.SetFileTypes(&filters);
-        let _ = dialog.SetTitle(title);
+        let _ = dialog.SetTitle(PCWSTR(title.as_ptr()));
         dialog.Show(owner.map(|h| h.get()).unwrap_or_default()).ok()?;
         let item = dialog.GetResult().ok()?;
         let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
@@ -376,6 +387,19 @@ pub fn windows_simplified() -> bool {
     use windows::Win32::Globalization::GetUserDefaultUILanguage;
     // zh-CN 0x0804, zh-SG 0x1004
     matches!(unsafe { GetUserDefaultUILanguage() }, 0x0804 | 0x1004)
+}
+
+/// SmartTorch's language from Windows' own: Simplified, Traditional (any other Chinese), else English.
+pub fn windows_lang() -> &'static str {
+    use windows::Win32::Globalization::GetUserDefaultUILanguage;
+    let id = unsafe { GetUserDefaultUILanguage() };
+    if windows_simplified() {
+        "sc"
+    } else if id & 0x3ff == 0x04 {
+        "tc"
+    } else {
+        "en"
+    }
 }
 
 #[cfg(test)]

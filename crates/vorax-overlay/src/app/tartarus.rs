@@ -166,7 +166,7 @@ impl Tart {
         self.starts.retain(|t| now.duration_since(*t) < Duration::from_secs(120));
         if self.starts.len() >= 3 {
             self.want = false;
-            self.error = Some("囚獸助手接連關閉了三次，已停止自動重新開啟。".into());
+            self.error = Some(crate::zh::tr("囚獸助手接連關閉了三次，已停止自動重新開啟。", "Tartarus Solver closed three times in a row: it won't be started again by itself."));
             note("Tartarus Solver closed three times in two minutes: not started again");
             return;
         }
@@ -180,7 +180,7 @@ impl Tart {
             }
             Err(e) => {
                 self.want = false;
-                self.error = Some(format!("無法啟動：{e}"));
+                self.error = Some(format!("{}{e}", crate::zh::tr("無法啟動：", "Couldn't start it: ")));
                 note(&format!("Tartarus Solver didn't start: {e}"));
             }
         }

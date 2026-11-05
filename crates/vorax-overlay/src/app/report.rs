@@ -43,7 +43,7 @@ pub fn keep(name: &str, w: usize, h: usize, rgba: &[u8]) -> Option<PathBuf> {
 
 /// Ctrl+Alt+B: the last picture read set aside for the report. How many are set aside now.
 pub fn mark(last: Option<&Path>) -> Result<usize, String> {
-    let last = last.filter(|p| p.is_file()).ok_or("還沒有讀過畫面")?;
+    let last = last.filter(|p| p.is_file()).ok_or_else(|| crate::zh::tr("還沒有讀過畫面", "nothing has been read yet"))?;
     let dir = marked_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let name = last.file_name().ok_or("no name")?;
@@ -119,12 +119,12 @@ pub fn pack(version: &str) -> Result<PathBuf, String> {
             files.push((name.to_string(), data));
         }
     }
-    files.push(("version.txt".to_string(), format!("火炬工具箱 v{version}\n").into_bytes()));
+    files.push(("version.txt".to_string(), format!("SmartTorch v{version}\n").into_bytes()));
     let stamp = {
         let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
         super::sys::local_stamp(secs)
     };
-    let out = desktop().join(format!("火炬工具箱回報-{stamp}.zip"));
+    let out = desktop().join(format!("SmartTorch-report-{stamp}.zip"));
     let mut f = std::fs::File::create(&out).map_err(|e| format!("{}: {e}", out.display()))?;
     crate::zipw::write(&mut f, &files).map_err(|e| e.to_string())?;
     for p in &marked {

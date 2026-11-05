@@ -360,17 +360,22 @@ fn summary(reading: &vorax_scan::reading::Reading) -> String {
     use vorax::advisor::ScreenPhase;
     let st = &reading.state;
     let round = st.round.unwrap_or(0);
-    let screen = match st.phase {
-        ScreenPhase::Potion => format!("藥劑回合 {round}"),
-        ScreenPhase::Instrument => "選擇手術用具".to_string(),
-        ScreenPhase::Protocol => format!("手術方案回合 {round}"),
+    let en = crate::zh::english();
+    let screen = match (st.phase, en) {
+        (ScreenPhase::Potion, false) => format!("藥劑回合 {round}"),
+        (ScreenPhase::Potion, true) => format!("Potion round {round}"),
+        (ScreenPhase::Instrument, false) => "選擇手術用具".to_string(),
+        (ScreenPhase::Instrument, true) => "Instrument choice".to_string(),
+        (ScreenPhase::Protocol, false) => format!("手術方案回合 {round}"),
+        (ScreenPhase::Protocol, true) => format!("Protocol round {round}"),
     };
     let m = crate::draw::not_read(reading);
-    let mut missed: Vec<String> = m.cards.iter().map(|j| format!("第 {} 張卡", j + 1)).collect();
-    missed.extend(m.tanks.iter().map(|i| format!("第 {} 格", i + 1)));
-    if missed.is_empty() {
-        format!("{screen} · 全部讀到")
-    } else {
-        format!("{screen} · {}未讀到", missed.join("、"))
+    let mut missed: Vec<String> = m.cards.iter().map(|j| if en { format!("card {}", j + 1) } else { format!("第 {} 張卡", j + 1) }).collect();
+    missed.extend(m.tanks.iter().map(|i| if en { format!("tank {}", i + 1) } else { format!("第 {} 格", i + 1) }));
+    match (missed.is_empty(), en) {
+        (true, false) => format!("{screen} · 全部讀到"),
+        (true, true) => format!("{screen} · all read"),
+        (false, false) => format!("{screen} · {}未讀到", missed.join("、")),
+        (false, true) => format!("{screen} · not read: {}", missed.join(", ")),
     }
 }

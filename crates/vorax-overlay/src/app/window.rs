@@ -5,6 +5,7 @@
 use super::sys::{client_rect, find_game_window, foreground, note, Hwnd, Settings};
 use super::menu::{put, wrap, Row};
 use super::update::{self, Release};
+use crate::zh::{english, tr};
 use crate::draw::{render, Fonts, Plan};
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -209,7 +210,7 @@ pub fn create(fonts: Fonts, rx: Receiver<ToUi>, to_self: Sender<ToUi>, tx: Sende
             }
         }
         let mut nid = NOTIFYICONDATAW { cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32, hWnd: hwnd, uID: 1, uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP, uCallbackMessage: WM_TRAY, hIcon: app_icon(instance), ..Default::default() };
-        let tip: Vec<u16> = "火炬工具箱".encode_utf16().collect();
+        let tip: Vec<u16> = "SmartTorch".encode_utf16().collect();
         nid.szTip[..tip.len()].copy_from_slice(&tip);
         let _ = Shell_NotifyIconW(NIM_ADD, &nid);
         SetTimer(hwnd, TIMER_FOLLOW, 250, None);
@@ -295,9 +296,9 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                             let rows = match &r {
                                 Ok(n) => {
                                     s.marked = *n;
-                                    vec![Row::Header { title: "已記下這個畫面".into(), status: format!("共 {n} 個 · 之後在主視窗按「回報問題」") }]
+                                    vec![Row::Header { title: tr("已記下這個畫面", "Picture set aside"), status: if english() { format!("{n} so far · press Report a problem in the main window later") } else { format!("共 {n} 個 · 之後在主視窗按「回報問題」") } }]
                                 }
-                                Err(e) => vec![Row::Header { title: "沒有可記下的畫面".into(), status: e.clone() }],
+                                Err(e) => vec![Row::Header { title: tr("沒有可記下的畫面", "No picture to set aside"), status: e.clone() }],
                             };
                             super::menu::notify(s.hwnd, rows, s.fonts.clone());
                             unsafe {
@@ -307,7 +308,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                         ToUi::TartLatest(v) => s.tart_latest = Some(v),
                         ToUi::Read(text, warn) => {
                             // a run may have just ended: count again
-                            if text.starts_with("手術方案") {
+                            if text.starts_with("手術方案") || text.starts_with("Protocol") {
                                 s.stats = None;
                             }
                             s.last_read = Some((text, warn, std::time::Instant::now()));
@@ -319,9 +320,9 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                         ToUi::UpdateFailed(e) => {
                             s.updating = None;
                             note(&format!("update failed: {e}"));
-                            let mut rows = vec![Row::Header { title: "更新失敗".into(), status: format!("繼續使用 v{}", update::current()) }];
+                            let mut rows = vec![Row::Header { title: tr("更新失敗", "The update failed"), status: if english() { format!("still v{}", update::current()) } else { format!("繼續使用 v{}", update::current()) } }];
                             rows.push(Row::Lines(wrap(&s.fonts, &e, 6)));
-                            rows.push(Row::Buttons { primary: (MENU_LATER, "確定".into()), secondary: None });
+                            rows.push(Row::Buttons { primary: (MENU_LATER, tr("確定", "OK")), secondary: None });
                             if !super::menu::refresh(rows.clone()) {
                                 super::menu::notify(s.hwnd, rows, s.fonts.clone());
                             }
@@ -473,20 +474,20 @@ unsafe fn quit(hwnd: HWND) {
 fn tray_menu(hwnd: HWND) {
     let Some((rows, fonts)) = with_state(|s| {
         let status = match &s.update {
-            Some(r) => format!("v{} · 有新版本：v{}", update::current(), r.version),
+            Some(r) => if english() { format!("v{} · v{} is out", update::current(), r.version) } else { format!("v{} · 有新版本：v{}", update::current(), r.version) },
             None => format!("v{}", update::current()),
         };
-        let mut rows = vec![Row::Header { title: "火炬工具箱".into(), status }];
-        rows.push(Row::Text(format!("渴癮症助手：{}", if s.running { "執行中" } else { "已停止" })));
+        let mut rows = vec![Row::Header { title: "SmartTorch".into(), status }];
+        rows.push(Row::Text(if english() { format!("Vorax helper: {}", if s.running { "running" } else { "stopped" }) } else { format!("渴癮症助手：{}", if s.running { "執行中" } else { "已停止" }) }));
         if s.game_log == Some(GameLog::Off) {
-            rows.push(Row::Warn("遊戲日誌未開啟：不會自動讀取畫面".into()));
+            rows.push(Row::Warn(tr("遊戲日誌未開啟：不會自動讀取畫面", "The game's log is off: boards aren't read by themselves")));
         }
         rows.push(Row::Separator);
-        rows.push(Row::Switch { id: MENU_TOGGLE, label: "顯示提示（Ctrl+Alt+V）".into(), on: s.settings.shown });
-        rows.push(Row::Action { id: MENU_SNAP, label: "立即讀取畫面".into(), shortcut: "Ctrl+Alt+X".into() });
+        rows.push(Row::Switch { id: MENU_TOGGLE, label: tr("顯示提示（Ctrl+Alt+V）", "Show hints (Ctrl+Alt+V)"), on: s.settings.shown });
+        rows.push(Row::Action { id: MENU_SNAP, label: tr("立即讀取畫面", "Read the board now"), shortcut: "Ctrl+Alt+X".into() });
         rows.push(Row::Separator);
-        rows.push(Row::Action { id: MENU_HUB, label: "開啟主視窗".into(), shortcut: String::new() });
-        rows.push(Row::Action { id: MENU_QUIT, label: "結束".into(), shortcut: "Ctrl+Alt+Q".into() });
+        rows.push(Row::Action { id: MENU_HUB, label: tr("開啟主視窗", "Open the main window"), shortcut: String::new() });
+        rows.push(Row::Action { id: MENU_QUIT, label: tr("結束", "Quit"), shortcut: "Ctrl+Alt+Q".into() });
         (rows, s.fonts.clone())
     }) else {
         return;
@@ -497,7 +498,17 @@ fn tray_menu(hwnd: HWND) {
 /// What to do when the game's log has no moves in it: the in-game switch, step by step. `by_tray`: shown by
 /// itself, in the corner by the tray, without taking the game's focus.
 fn log_card(s: &State, by_tray: bool) {
-    let rows = if s.game_log == Some(GameLog::Missing) {
+    let rows = if english() {
+        let (title, status, body) = if s.game_log == Some(GameLog::Missing) {
+            ("Game log not found", "boards aren't read by themselves", "Start the game first: SmartTorch finds UE_game.log from where the game is installed. Make sure the game's log is on (Esc → Account Related → Enable Log, then log in again). Still not found: in the main window's Vorax page, press Choose… and pick UE_game.log. Meanwhile Ctrl+Alt+X reads the board.")
+        } else {
+            ("Turn on the game's log", "boards aren't read by themselves until then", "In the game press Esc, open Account Related, click Enable Log, then log out and in again. Meanwhile Ctrl+Alt+X reads the board.")
+        };
+        let mut rows = vec![Row::Header { title: title.into(), status: status.into() }];
+        rows.push(Row::Lines(wrap(&s.fonts, body, 9)));
+        rows.push(Row::Buttons { primary: (MENU_LATER, "OK".into()), secondary: None });
+        rows
+    } else if s.game_log == Some(GameLog::Missing) {
         vec![
             Row::Header { title: "找不到遊戲日誌".into(), status: "不會自動讀取畫面".into() },
             Row::Text("請先開啟遊戲：開啟後工具會從遊戲的".into()),
@@ -532,8 +543,8 @@ fn update_offer(s: &State) {
     let Some(r) = &s.update else { return };
     note(&format!("update available: v{} (this is v{})", r.version, update::current()));
     let rows = vec![
-        Row::Header { title: "中文版有新版本".into(), status: format!("v{} 已推出 · 你目前是 v{}", r.version, update::current()) },
-        Row::Buttons { primary: (MENU_UPDATE, "更新內容".into()), secondary: Some((MENU_LATER, "稍後".into())) },
+        Row::Header { title: tr("SmartTorch 有新版本", "A new SmartTorch is out"), status: if english() { format!("v{} is out · this is v{}", r.version, update::current()) } else { format!("v{} 已推出 · 你目前是 v{}", r.version, update::current()) } },
+        Row::Buttons { primary: (MENU_UPDATE, tr("更新內容", "What's new")), secondary: Some((MENU_LATER, tr("稍後", "Later"))) },
     ];
     super::menu::notify(s.hwnd, rows, s.fonts.clone());
 }
@@ -545,10 +556,10 @@ fn whats_new(s: &State) {
         return super::menu::open(s.hwnd, download_rows(s), s.fonts.clone());
     }
     let rows = vec![
-        Row::Header { title: format!("v{} 更新內容", r.version), status: format!("你目前是 v{}", update::current()) },
+        Row::Header { title: if english() { format!("What's new in v{}", r.version) } else { format!("v{} 更新內容", r.version) }, status: if english() { format!("this is v{}", update::current()) } else { format!("你目前是 v{}", update::current()) } },
         Row::Lines(wrap(&s.fonts, &r.notes, 18)),
-        Row::Action { id: MENU_RELEASE_PAGE, label: "GitHub 上的版本頁面".into(), shortcut: "開啟".into() },
-        Row::Buttons { primary: (MENU_UPDATE_NOW, "立即更新".into()), secondary: Some((MENU_LATER, "稍後".into())) },
+        Row::Action { id: MENU_RELEASE_PAGE, label: tr("GitHub 上的版本頁面", "Its page on GitHub"), shortcut: tr("開啟", "Open") },
+        Row::Buttons { primary: (MENU_UPDATE_NOW, tr("立即更新", "Update now")), secondary: Some((MENU_LATER, tr("稍後", "Later"))) },
     ];
     super::menu::open(s.hwnd, rows, s.fonts.clone());
 }
@@ -557,9 +568,9 @@ fn whats_new(s: &State) {
 fn download_rows(s: &State) -> Vec<Row> {
     let (v, p) = (s.update.as_ref().map_or(String::new(), |r| r.version.clone()), s.updating.unwrap_or(0.0));
     vec![
-        Row::Header { title: format!("正在更新到 v{v}"), status: format!("從 github.com/{} 下載", update::REPO) },
+        Row::Header { title: if english() { format!("Updating to v{v}") } else { format!("正在更新到 v{v}") }, status: if english() { format!("from github.com/{}", update::REPO) } else { format!("從 github.com/{} 下載", update::REPO) } },
         Row::Progress(p),
-        Row::Text(format!("{:.0}% · 下載後會檢查檔案並重新啟動", p * 100.0)),
+        Row::Text(if english() { format!("{:.0}% · checked, then restarted", p * 100.0) } else { format!("{:.0}% · 下載後會檢查檔案並重新啟動", p * 100.0) }),
     ]
 }
 
@@ -734,11 +745,15 @@ fn state_json(s: &mut State) -> String {
         Some(GameLog::Checking) => "checking",
         Some(GameLog::NoGame) | None => "nogame",
     };
-    let script = match crate::zh::mode() {
-        crate::zh::SIMPLIFIED => "sc",
-        crate::zh::TRADITIONAL => "tc",
-        _ if super::sys::windows_simplified() => "sc",
-        _ => "tc",
+    let lang = if english() {
+        "en"
+    } else {
+        match crate::zh::mode() {
+            crate::zh::SIMPLIFIED => "sc",
+            crate::zh::TRADITIONAL => "tc",
+            _ if super::sys::windows_simplified() => "sc",
+            _ => "tc",
+        }
     };
     let stats = match s.stats {
         Some((st, at)) if at.elapsed() < std::time::Duration::from_secs(30) => st,
@@ -751,7 +766,7 @@ fn state_json(s: &mut State) -> String {
     serde_json::json!({
         "type": "state",
         "version": update::current(),
-        "script": script,
+        "lang": lang,
         "update": s.update.as_ref().map(|r| serde_json::json!({ "version": r.version, "notes": r.notes, "page": r.page })),
         "updating": s.updating,
         "upToDate": s.up_to_date,
@@ -795,10 +810,10 @@ fn hub_closed() {
             s.settings.close_hint_shown = true;
             s.settings.save();
             let rows = vec![
-                Row::Header { title: "火炬工具箱仍在執行".into(), status: "已縮到右下角".into() },
-                Row::Text("點右下角的圖示可再次開啟主視窗。".into()),
-                Row::Text("要完全關閉：在圖示按右鍵 →「結束」。".into()),
-                Row::Buttons { primary: (MENU_LATER, "確定".into()), secondary: None },
+                Row::Header { title: tr("SmartTorch 仍在執行", "SmartTorch is still running"), status: tr("已縮到右下角", "in the tray, by the clock") },
+                Row::Text(tr("點右下角的圖示可再次開啟主視窗。", "Click its icon to open the main window again.")),
+                Row::Text(tr("要完全關閉：在圖示按右鍵 →「結束」。", "To close it: right-click the icon → Quit.")),
+                Row::Buttons { primary: (MENU_LATER, tr("確定", "OK")), secondary: None },
             ];
             super::menu::notify(s.hwnd, rows, s.fonts.clone());
         }
@@ -843,10 +858,18 @@ fn from_hub(text: &str) {
                         toggle_read(s);
                     }
                 }
-                "script" => {
-                    crate::zh::set_mode(if value.as_str() == Some("sc") { crate::zh::SIMPLIFIED } else { crate::zh::TRADITIONAL });
-                    s.settings.script = crate::zh::mode();
+                "lang" => {
+                    let lang = value.as_str().unwrap_or("tc");
+                    crate::zh::set_english(lang == "en");
+                    if lang != "en" {
+                        crate::zh::set_mode(if lang == "sc" { crate::zh::SIMPLIFIED } else { crate::zh::TRADITIONAL });
+                        s.settings.script = crate::zh::mode();
+                    }
+                    s.settings.lang = lang.to_string();
                     s.settings.save();
+                    s.stats = None;
+                    // the hint shown again in the new language
+                    let _ = s.tx.send(ToWorker::Shelley(s.settings.shelley));
                     s.placed = None;
                     follow(s);
                 }

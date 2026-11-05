@@ -6,6 +6,7 @@
 
 use super::menu::put;
 use super::sys::data_dir;
+use crate::zh::{english, tr};
 use crate::draw::{measure, paint, rgba, rounded, text, Fonts, GOLD, GOLD_DIM};
 use serde_json::Value;
 use std::cell::RefCell;
@@ -77,6 +78,15 @@ impl Run {
 }
 
 fn short(a: &str) -> &str {
+    if english() {
+        return match a {
+            "boneSentry" => "Bone",
+            "aemberon" => "Aemb",
+            "agito" => "Agito",
+            "pest" => "Pest",
+            x => x,
+        };
+    }
     match a {
         "boneSentry" => "骨",
         "aemberon" => "異",
@@ -88,6 +98,15 @@ fn short(a: &str) -> &str {
 
 /// A rarity as one word (not in upstream: the Chinese edition's).
 fn rarity_word(r: &str) -> &str {
+    if english() {
+        return match r {
+            "normal" => "Normal ",
+            "magic" => "Magic ",
+            "rare" => "Rare ",
+            "boss" => "Boss ",
+            x => x,
+        };
+    }
     match r {
         "normal" => "普通",
         "magic" => "魔法",
@@ -99,6 +118,9 @@ fn rarity_word(r: &str) -> &str {
 
 /// A card's name as the Chinese client prints it (names_zh.json's first form), else as the log has it.
 fn zh_card(name: &str) -> String {
+    if english() {
+        return name.to_string();
+    }
     let z = &vorax_scan::scan_data().names_zh;
     [&z.instrument, &z.potion, &z.protocol].iter().find_map(|m| m.get(name).and_then(|f| f.first().cloned())).unwrap_or_else(|| name.to_string())
 }
@@ -202,7 +224,8 @@ fn parse(text: &str) -> Vec<Run> {
 /// of first odds went. Runs not played to the protocols (closed early, read part way) aren't counted.
 fn summary(runs: &[Run]) -> Vec<String> {
     let mut out = Vec::new();
-    for (mode, name) in [(Mode::Safe, "保守"), (Mode::Aggressive, "衝分"), (Mode::Unknown, "未記錄模式")] {
+    let en = english();
+    for (mode, name) in [(Mode::Safe, if en { "Upstream's" } else { "原作者" }), (Mode::Aggressive, if en { "Push score" } else { "衝分" }), (Mode::Unknown, if en { "Mode not logged" } else { "未記錄模式" })] {
         let done: Vec<&Run> = runs.iter().filter(|r| r.mode == mode && r.finished()).collect();
         if done.is_empty() {
             continue;
@@ -210,9 +233,17 @@ fn summary(runs: &[Run]) -> Vec<String> {
         let n = done.len();
         let won = done.iter().filter(|r| r.last().score >= 840_000).count();
         let firsts: Vec<u32> = done.iter().filter_map(|r| r.first_pct()).collect();
-        let mean_first = if firsts.is_empty() { String::new() } else { format!(" · 開局預計平均 {:.0}%", firsts.iter().sum::<u32>() as f64 / firsts.len() as f64) };
+        let mean_first = match (firsts.is_empty(), en) {
+            (true, _) => String::new(),
+            (false, false) => format!(" · 開局預計平均 {:.0}%", firsts.iter().sum::<u32>() as f64 / firsts.len() as f64),
+            (false, true) => format!(" · expected at the start {:.0}% on average", firsts.iter().sum::<u32>() as f64 / firsts.len() as f64),
+        };
         let mean_score = done.iter().map(|r| r.last().score as f64).sum::<f64>() / n as f64;
-        out.push(format!("{name}：{n} 局 · 彩箱 {won} 局（{:.0}%）{mean_first} · 平均 {:.0} 萬", won as f64 / n as f64 * 100.0, mean_score / 10_000.0));
+        out.push(if en {
+            format!("{name}: {n} runs · {won} reached 840k ({:.0}%){mean_first} · mean {:.0}k", won as f64 / n as f64 * 100.0, mean_score / 1000.0)
+        } else {
+            format!("{name}：{n} 局 · 彩箱 {won} 局（{:.0}%）{mean_first} · 平均 {:.0} 萬", won as f64 / n as f64 * 100.0, mean_score / 10_000.0)
+        });
         if n >= 20 && mode != Mode::Unknown {
             let bands = [(0, 40, "<40%"), (40, 60, "40–60%"), (60, 80, "60–80%"), (80, 101, "≥80%")];
             let parts: Vec<String> = bands
@@ -222,7 +253,7 @@ fn summary(runs: &[Run]) -> Vec<String> {
                     (!these.is_empty()).then(|| format!("{label} {}/{}", these.iter().filter(|r| r.last().score >= 840_000).count(), these.len()))
                 })
                 .collect();
-            out.push(format!("　預計 → 實際彩箱：{}", parts.join(" · ")));
+            out.push(if en { format!("  expected → reached: {}", parts.join(" · ")) } else { format!("　預計 → 實際彩箱：{}", parts.join(" · ")) });
         }
     }
     out
@@ -259,7 +290,8 @@ fn local(at: f64) -> (String, i64) {
     }
     let l: windows::Win32::Foundation::SYSTEMTIME = l;
     let day = l.wYear as i64 * 400 + l.wMonth as i64 * 32 + l.wDay as i64;
-    (format!("{} 月 {} 日 · {:02}:{:02}", l.wMonth, l.wDay, l.wHour, l.wMinute), day)
+    let date = if english() { format!("{}/{}", l.wDay, l.wMonth) } else { format!("{} 月 {} 日", l.wMonth, l.wDay) };
+    (format!("{date} · {:02}:{:02}", l.wHour, l.wMinute), day)
 }
 
 fn when(at: f64) -> String {
@@ -268,9 +300,9 @@ fn when(at: f64) -> String {
     let (_, today) = local(now);
     let time = s.split(" · ").nth(1).unwrap_or("").to_string();
     if day == today {
-        format!("今天 · {time}")
+        format!("{} · {time}", tr("今天", "Today"))
     } else if day == local(now - 86_400.0).1 {
-        format!("昨天 · {time}")
+        format!("{} · {time}", tr("昨天", "Yesterday"))
     } else {
         s
     }
@@ -404,7 +436,7 @@ impl View {
         self.scroll = self.scroll.clamp(0.0, (self.content() - self.viewport()).max(0.0));
     }
     fn buttons(&self) -> ((f32, f32), (f32, f32)) {
-        let raw_w = measure(&self.fonts.bold, "原始紀錄", 12.5) + 26.0;
+        let raw_w = measure(&self.fonts.bold, &tr("原始紀錄", "Raw log"), 12.5) + 26.0;
         ((self.w - 14.0 - 30.0 - 8.0 - raw_w, raw_w), (self.w - 14.0 - 30.0, 30.0))
     }
     /// The edges a press at (x, y) in the window would drag (not in upstream): near the panel's right or bottom edge.
@@ -480,11 +512,12 @@ fn render(v: &View) -> Pixmap {
     if let Some(p) = pb.finish() {
         pm.fill_path(&p, &paint(rgba(GOLD.0, GOLD.1, GOLD.2, 1.0)), FillRule::Winding, Transform::identity(), None);
     }
-    text(&mut pm, &v.fonts.bold, "對局紀錄", 16.0 * s, ox + 40.0 * s, oy + 29.0 * s, light, 1.0);
-    let status = format!("共 {} 局 · 最新的在前 · 點一局可查看每回合", v.runs.len());
+    text(&mut pm, &v.fonts.bold, &tr("對局紀錄", "Your runs"), 16.0 * s, ox + 40.0 * s, oy + 29.0 * s, light, 1.0);
+    let status = if english() { format!("{} runs · newest first · click one to see each round", v.runs.len()) } else { format!("共 {} 局 · 最新的在前 · 點一局可查看每回合", v.runs.len()) };
     text(&mut pm, &v.fonts.regular, &status, 12.0 * s, ox + 40.0 * s, oy + 47.0 * s, dim, 1.0);
     let ((rx, rw), (xx, xw)) = v.buttons();
-    for (hit, bx, bw, label) in [(Hit::Raw, rx, rw, "原始紀錄"), (Hit::Close, xx, xw, "×")] {
+    let raw = tr("原始紀錄", "Raw log");
+    for (hit, bx, bw, label) in [(Hit::Raw, rx, rw, raw.as_str()), (Hit::Close, xx, xw, "×")] {
         let under = v.hover == Some(hit);
         if let Some(p) = rounded(ox + bx * s, oy + 16.0 * s, bw * s, 30.0 * s, 8.0 * s) {
             pm.fill_path(&p, &paint(rgba(255, 255, 255, if under { 0.16 } else { 0.08 })), FillRule::Winding, Transform::identity(), None);
@@ -501,7 +534,7 @@ fn render(v: &View) -> Pixmap {
     let (lw, lh) = (cw, v.viewport() * s);
     let Some(mut list) = Pixmap::new(lw.ceil() as u32, lh.max(1.0).ceil() as u32) else { return pm };
     if v.runs.is_empty() {
-        text(&mut list, &v.fonts.regular, "還沒有紀錄：工具讀過一局後就會出現在這裡。", 13.0 * s, 20.0 * s, 30.0 * s, soft, 1.0);
+        text(&mut list, &v.fonts.regular, &tr("還沒有紀錄：工具讀過一局後就會出現在這裡。", "No runs yet: they show here once a run has been read."), 13.0 * s, 20.0 * s, 30.0 * s, soft, 1.0);
     }
     for (it, top, height) in v.items() {
         let y0 = (top - v.scroll) * s;
@@ -513,7 +546,7 @@ fn render(v: &View) -> Pixmap {
                 if let Some(p) = rounded(12.0 * s, y0, lw - 24.0 * s, height * s, 10.0 * s) {
                     list.fill_path(&p, &paint(rgba(GOLD.0, GOLD.1, GOLD.2, 0.07)), FillRule::Winding, Transform::identity(), None);
                 }
-                text(&mut list, &v.fonts.bold, "實戰統計（只計打到最後的局，最終活性 840k 以上算彩箱）", 12.5 * s, 28.0 * s, y0 + 21.0 * s, GOLD, 1.0);
+                text(&mut list, &v.fonts.bold, &tr("實戰統計（只計打到最後的局，最終活性 840k 以上算彩箱）", "Your results (runs played to the end; 840k or more counts as reached)"), 12.5 * s, 28.0 * s, y0 + 21.0 * s, GOLD, 1.0);
                 for (k, line) in v.totals.iter().enumerate() {
                     text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, line, 12.5 * s, lw - 56.0 * s), 12.5 * s, 28.0 * s, y0 + (40.0 + 18.0 * k as f32) * s, soft, 1.0);
                 }
@@ -545,26 +578,31 @@ fn render(v: &View) -> Pixmap {
                 text(&mut list, &v.fonts.bold, &when(r.at), 14.0 * s, 42.0 * s, y0 + 27.0 * s, light, 1.0);
                 let odds = r.odds();
                 if let Some(&(_, p)) = odds.last() {
-                    let label = format!("{p}% 達 840k");
+                    let label = if english() { format!("{p}% to 840k") } else { format!("{p}% 達 840k") };
                     let tw = measure(&v.fonts.bold, &label, 13.5 * s);
                     text(&mut list, &v.fonts.bold, &label, 13.5 * s, lw - 28.0 * s - tw, y0 + 27.0 * s, odds_colour(p), 1.0);
                 }
                 let path: Vec<String> = odds.iter().map(|(rd, p)| format!("R{rd} {p}%")).collect();
-                let line2 = format!("第 {} 回合 · 最後讀到 {} · {} 個畫面{}", last.round, thousands(last.score), r.boards.len(), if path.is_empty() { String::new() } else { format!(" · {}", path.join(" → ")) });
+                let tail = if path.is_empty() { String::new() } else { format!(" · {}", path.join(" → ")) };
+                let line2 = if english() { format!("Round {} · last read {} · {} boards{tail}", last.round, thousands(last.score), r.boards.len()) } else { format!("第 {} 回合 · 最後讀到 {} · {} 個畫面{tail}", last.round, thousands(last.score), r.boards.len()) };
                 text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, &line2, 12.5 * s, lw - 70.0 * s), 12.5 * s, 42.0 * s, y0 + 46.0 * s, soft, 1.0);
-                let inst = if last.instruments.is_empty() { "沒有讀到手術用具".to_string() } else { last.instruments.join("  ·  ") };
+                let inst = if last.instruments.is_empty() { tr("沒有讀到手術用具", "no instruments read") } else { last.instruments.join("  ·  ") };
                 text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, &inst, 12.0 * s, lw - 70.0 * s), 12.0 * s, 42.0 * s, y0 + 62.0 * s, dim, 1.0);
             }
             Item::Board(i, j) => {
                 let b = &v.runs[i].boards[j];
                 let phase = match b.phase.as_str() {
+                    "instrument" if english() => "Instrument",
+                    "protocol" if english() => "Protocol",
+                    _ if english() => "Potion",
                     "instrument" => "手術用具",
                     "protocol" => "手術方案",
                     _ => "藥劑",
                 };
                 text(&mut list, &v.fonts.bold, &format!("R{}", b.round), 12.5 * s, 44.0 * s, y0 + 17.0 * s, GOLD, 1.0);
                 text(&mut list, &v.fonts.regular, phase, 11.5 * s, 78.0 * s, y0 + 17.0 * s, dim, 1.0);
-                let advice = if b.advice.is_empty() { "（沒有建議）" } else { &b.advice };
+                let none = tr("（沒有建議）", "(no advice)");
+                let advice = if b.advice.is_empty() { none.as_str() } else { &b.advice };
                 let right = b.pct.map(|p| format!("{p}%")).unwrap_or_default();
                 let rw = measure(&v.fonts.bold, &right, 12.5 * s);
                 text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, advice, 13.0 * s, lw - 190.0 * s - rw), 13.0 * s, 150.0 * s, y0 + 17.0 * s, light, 1.0);
@@ -573,7 +611,7 @@ fn render(v: &View) -> Pixmap {
                 }
                 // the instruments when they changed, else the tanks
                 let prev = j.checked_sub(1).map(|k| &v.runs[i].boards[k].instruments);
-                let detail = if prev != Some(&b.instruments) && !b.instruments.is_empty() { format!("手術用具：{}", b.instruments.join(" · ")) } else { b.tanks.clone() };
+                let detail = if prev != Some(&b.instruments) && !b.instruments.is_empty() { format!("{}{}", tr("手術用具：", "Instruments: "), b.instruments.join(" · ")) } else { b.tanks.clone() };
                 text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, &detail, 11.5 * s, lw - 190.0 * s), 11.5 * s, 150.0 * s, y0 + 33.0 * s, dim, 1.0);
             }
         }
@@ -956,7 +994,7 @@ mod summary_tests {
         assert_eq!(
             summary(&runs),
             vec![
-                "保守：1 局 · 彩箱 0 局（0%） · 開局預計平均 50% · 平均 45 萬".to_string(),
+                "原作者：1 局 · 彩箱 0 局（0%） · 開局預計平均 50% · 平均 45 萬".to_string(),
                 "衝分：1 局 · 彩箱 1 局（100%） · 開局預計平均 70% · 平均 100 萬".to_string(),
                 "未記錄模式：1 局 · 彩箱 1 局（100%） · 開局預計平均 60% · 平均 90 萬".to_string(),
             ]

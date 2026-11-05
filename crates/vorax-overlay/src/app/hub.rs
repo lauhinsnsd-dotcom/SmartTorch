@@ -140,7 +140,7 @@ fn create() -> windows::core::Result<HWND> {
         let hwnd = CreateWindowExW(
             WINDOW_EX_STYLE::default(),
             class,
-            w!("火炬工具箱"),
+            w!("SmartTorch"),
             WS_OVERLAPPEDWINDOW,
             ((sw - w) / 2).max(0),
             ((sh - h) / 2).max(0),
@@ -197,8 +197,11 @@ unsafe fn start_webview(hwnd: HWND) {
 fn no_webview(hwnd: HWND, why: &str) {
     note(&format!("WebView2 not available: {why}"));
     unsafe {
-        let text = HSTRING::from("火炬工具箱需要 Microsoft Edge WebView2 Runtime 才能顯示主視窗。\n\n按「確定」開啟下載頁面，安裝後重新開啟工具箱。\n（提示框與快捷鍵照常可用。）");
-        let r = MessageBoxW(hwnd, &text, w!("火炬工具箱"), MB_OKCANCEL | MB_ICONINFORMATION);
+        let text = HSTRING::from(crate::zh::tr(
+            "SmartTorch 需要 Microsoft Edge WebView2 Runtime 才能顯示主視窗。\n\n按「確定」開啟下載頁面，安裝後重新開啟 SmartTorch。\n（提示框與快捷鍵照常可用。）",
+            "SmartTorch needs the Microsoft Edge WebView2 Runtime to show its main window.\n\nPress OK to open its download page, then start SmartTorch again.\n(The hints and hotkeys work without it.)",
+        ));
+        let r = MessageBoxW(hwnd, &text, w!("SmartTorch"), MB_OKCANCEL | MB_ICONINFORMATION);
         if r == IDOK {
             let _ = std::process::Command::new("explorer.exe").arg("https://developer.microsoft.com/microsoft-edge/webview2/").spawn();
         }

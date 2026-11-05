@@ -98,7 +98,7 @@ impl Pipeline {
         }
         self.fill_rerolls(&mut reading);
         let advice = advise_plan(&reading.state, Some(FUTURES), true);
-        Some((plan_for(&advice, &reading.state, &reading, &layout_at(w, h, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0)), self.script == Script::Han), w, h))
+        Some((plan_for(&advice, &reading.state, &reading, &layout_at(w, h, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0)), self.script == Script::Han && !crate::zh::english()), w, h))
     }
 
     /// `frame`: the captured game window; `trigger`: "screen" when the log says a new game opened.
@@ -167,7 +167,7 @@ impl Pipeline {
         self.fill_rerolls(&mut reading);
         let read_ms = t.elapsed().as_secs_f64() * 1000.0;
         let advice = advise_plan(&reading.state, Some(FUTURES), true);
-        let plan = plan_for(&advice, &reading.state, &reading, &layout_at(img.width, img.height, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0)), self.script == Script::Han);
+        let plan = plan_for(&advice, &reading.state, &reading, &layout_at(img.width, img.height, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0)), self.script == Script::Han && !crate::zh::english());
         self.last = Some((reading.clone(), img.width, img.height));
         Outcome::Advice { reading: Box::new(reading), advice: Box::new(advice), plan, read_ms }
     }
