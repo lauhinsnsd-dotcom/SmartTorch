@@ -217,14 +217,16 @@ function vorax() {
     </div>
   </section>
   <div class="row" style="justify-content:space-between;gap:8px">
-    <div class="note">${v.marked ? `已記下 ${v.marked} 個畫面` : ""}</div>
+    <div class="row" style="gap:8px">${v.marked ? `<span class="note">已記下 ${v.marked} 個畫面</span>
+      <button class="btn small" data-cmd="markedOpen">開啟資料夾</button>
+      <button class="btn small" data-confirm="markedClear">清除</button>` : ""}</div>
     <div class="row" style="gap:8px">
       <button class="btn" data-cmd="runs">打開對局紀錄</button>
-      <button class="btn" data-confirm="resetStats">重設統計</button>
+      <button class="btn" data-confirm="clearRecords">清除紀錄</button>
       <button class="btn goldline" data-cmd="report">回報問題</button>
     </div>
   </div>
-  ${v.report ? `<div class="tip">已在桌面建立 <b>${esc(v.report.split("\\").pop())}</b>，並開啟了回報頁面：把這個 zip 拖進頁面，寫下發生了什麼即可。</div>` : ""}`;
+  ${v.report ? `<div class="tip">已在桌面建立 <b>${esc(v.report.split("\\").pop())}</b>，並在瀏覽器開啟了回報頁面：把這個 zip 拖進頁面的「回報檔」欄，寫下發生了什麼即可（需要登入 GitHub）。</div>` : ""}`;
 }
 
 function tartarus() {
@@ -373,7 +375,7 @@ document.addEventListener("click", (e) => {
   if (t.dataset.goto) { page = "settings"; tab = t.dataset.goto; render(); document.getElementById("main").scrollTop = 0; return; }
   if (t.dataset.url) { send({ cmd: "open", url: t.dataset.url }); return; }
   if (t.dataset.confirm) {
-    const words = { resetStats: "重設統計？之前的局數不再計入（對局紀錄仍保留）。", tartarusReset: "重設囚獸助手的統計？工具箱之後只計算從現在開始的局數（囚獸助手自己的紀錄不會改動）。" }[t.dataset.confirm];
+    const words = { clearRecords: "清除紀錄？對局紀錄、統計、記錄檔和記下的畫面都會刪除，之後從零開始。（有問題要回報的話，請先按「回報問題」再清除。）", markedClear: "清除記下的畫面？（回報問題後會自動清除，平常不必手動清除）", tartarusReset: "重設囚獸助手的統計？工具箱之後只計算從現在開始的局數（囚獸助手自己的紀錄不會改動）。" }[t.dataset.confirm];
     if (confirm(S.script === "sc" ? toSc(words) : words)) send({ cmd: t.dataset.confirm });
     return;
   }

@@ -893,12 +893,18 @@ fn from_hub(text: &str) {
         "runs" => {
             with_state(|s| super::logview::open(s.fonts.clone()));
         }
-        "resetStats" => {
+        "clearRecords" => {
+            super::report::clear_all();
             with_state(|s| {
                 s.stats = None;
-                s.settings.stats_since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
+                s.settings.stats_since = 0.0;
                 s.settings.save();
-                note("statistics reset from the toolbox");
+                s.marked = 0;
+                s.report = None;
+                s.last_read = None;
+                // the new log starts with the mode, so the runs from here count under it
+                note(&format!("records cleared from the toolbox (v{})", update::current()));
+                note(if vorax::bot::mean_goal() { "mode: aggressive (衝分), futures judged by their plain final score" } else { "mode: upstream's (保守), futures counted up to 840k" });
             });
         }
         "checkUpdate" => {
@@ -962,11 +968,20 @@ fn from_hub(text: &str) {
                         s.marked = 0;
                         s.report = Some(zip.clone());
                     });
-                    super::report::show_in_folder(&zip);
+                    // the form first, then the zip to drag onto it
                     super::hub::open_url("https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh/issues/new?template=bug.yml");
+                    super::report::show_in_folder(&zip);
                 }
                 Err(e) => note(&format!("report not packed: {e}")),
             }
+        }
+        "markedOpen" => super::report::open_marked(),
+        "markedClear" => {
+            super::report::clear();
+            with_state(|s| {
+                s.marked = 0;
+                s.report = None;
+            });
         }
         "firstRunDone" => {
             with_state(|s| {

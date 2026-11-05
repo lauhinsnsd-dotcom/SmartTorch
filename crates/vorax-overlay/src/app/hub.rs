@@ -287,10 +287,14 @@ unsafe fn ready_controller(hwnd: HWND, controller: ICoreWebView2Controller) {
     let _ = webview.NavigateToString(&HSTRING::from(page()));
 }
 
-/// Opens a web page in the default browser (only http and https).
+/// Opens a web page in the default browser (only http and https): Windows' own way to open an address (on some
+/// PCs explorer.exe given an address opens a folder instead).
 pub fn open_url(url: &str) {
     if url.starts_with("https://") || url.starts_with("http://") {
-        let _ = std::process::Command::new("explorer.exe").arg(url).spawn();
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        unsafe {
+            let _ = ShellExecuteW(HWND::default(), w!("open"), &HSTRING::from(url), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL);
+        }
     }
 }
 

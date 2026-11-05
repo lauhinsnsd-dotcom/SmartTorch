@@ -52,6 +52,31 @@ pub fn mark(last: Option<&Path>) -> Result<usize, String> {
     Ok(marked())
 }
 
+/// Opens the folder of the pictures set aside, in Explorer.
+pub fn open_marked() {
+    let dir = marked_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::process::Command::new("explorer.exe").arg(&dir).spawn();
+}
+
+/// Throws away the pictures set aside (and the last ones read).
+pub fn clear() {
+    for p in pngs(&marked_dir()).into_iter().chain(pngs(&recent_dir())) {
+        let _ = std::fs::remove_file(p);
+    }
+    note("pictures set aside cleared");
+}
+
+/// 清除紀錄: the debug log (and the one before it: the runs and statistics come from them) and the pictures,
+/// gone. A problem reported and solved, the next report starts clean.
+pub fn clear_all() {
+    clear();
+    let dir = data_dir();
+    for name in ["overlay.log", "overlay.log.old"] {
+        let _ = std::fs::remove_file(dir.join(name));
+    }
+}
+
 /// How many pictures are set aside for the report.
 pub fn marked() -> usize {
     pngs(&marked_dir()).len()
