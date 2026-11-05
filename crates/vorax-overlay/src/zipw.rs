@@ -85,7 +85,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("zipw-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let zip = dir.join("t.zip");
-        let files = vec![("記錄/overlay.log".to_string(), b"hello\n".to_vec()), ("a.png".to_string(), vec![0u8, 1, 2, 255])];
+        let files = vec![("log/overlay.log".to_string(), b"hello\n".to_vec()), ("a.png".to_string(), vec![0u8, 1, 2, 255])];
         super::write(&mut std::fs::File::create(&zip).unwrap(), &files).unwrap();
         // Windows: its own tar (bsdtar), which reads UTF-8 names as Explorer does (Git's unzip doesn't)
         let run = if cfg!(windows) {
@@ -95,7 +95,7 @@ mod tests {
         };
         let Ok(out) = run else { return };
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-        assert_eq!(std::fs::read(dir.join("記錄/overlay.log")).unwrap(), b"hello\n");
+        assert_eq!(std::fs::read(dir.join("log/overlay.log")).unwrap(), b"hello\n");
         assert_eq!(std::fs::read(dir.join("a.png")).unwrap(), vec![0u8, 1, 2, 255]);
         let _ = std::fs::remove_dir_all(&dir);
     }

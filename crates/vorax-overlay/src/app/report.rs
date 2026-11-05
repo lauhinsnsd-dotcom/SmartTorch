@@ -83,7 +83,8 @@ pub fn pack(version: &str) -> Result<PathBuf, String> {
     };
     for p in &pictures {
         if let (Some(name), Ok(data)) = (p.file_name(), std::fs::read(p)) {
-            let folder = if marked.is_empty() { "最近的畫面" } else { "記下的畫面" };
+            // ASCII names: every unzip reads them alike
+            let folder = if marked.is_empty() { "recent" } else { "marked" };
             files.push((format!("{folder}/{}", name.to_string_lossy()), data));
         }
     }
