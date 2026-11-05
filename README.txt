@@ -66,6 +66,21 @@ glcoder's Tartarus Solver: download and unpack it, run TartarusSolver.exe once a
 Settings opens its window.
 
 
+【易火 / ETor】
+
+其他作者的收益統計工具「易火 ETor」的啟動器。請自行安裝，開啟一次後 SmartTorch 會自動記住位置
+（或在主視窗「易火」按「選擇…」），之後可在 SmartTorch 開啟它；在「設定」可設定開遊戲時自動開啟。
+易火需要系統管理員權限，每次開啟 Windows 都會詢問，請按「是」。SmartTorch 不會修改或讀取它的資料。
+A launcher for ETor, another author's income tracker. Install it and open it once, and SmartTorch
+remembers it (or Choose… on the ETor page); then open it from SmartTorch, or with the game (Settings).
+It needs administrator rights, so Windows asks each time: press Yes. SmartTorch never touches its data.
+
+
+【流派碼 / Build codes】
+
+儲存自己常用的流派碼，按「複製」後到遊戲裡貼上。 Keep the build codes you use; Copy, then paste in the game.
+
+
 【快捷鍵 / Hotkeys】
 
 Ctrl + Alt + X   立即讀取 / Read the board now

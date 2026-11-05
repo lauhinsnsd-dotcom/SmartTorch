@@ -3,6 +3,17 @@
 每個版本更新了什麼。有新版本時，SmartTorch 的更新提示也會顯示該版本的內容。
 What each version changed. When a new version is out, SmartTorch's update note shows its part.
 
+## v1.0.1
+
+**流派碼 · Build codes**
+- 新分頁「流派碼」：儲存自己常用的流派碼（名字＋流派碼），按「複製」後到遊戲裡貼上；可修改、刪除、拖動排序。「清除紀錄」不會刪除流派碼。 A new Build codes page: keep the codes you use (a name and the code), Copy one and paste it in the game; edit, delete, drag to reorder. Clear records leaves them.
+
+**易火 · ETor**
+- 新分頁「易火」：其他作者的收益統計工具「易火 ETor」的啟動器。自行安裝後開啟一次，SmartTorch 會自動記住位置（或按「選擇…」），之後可在 SmartTorch 開啟它。易火需要系統管理員權限，每次開啟 Windows 都會詢問，請按「是」。SmartTorch 不會修改或讀取它的資料。 A new ETor page: a launcher for ETor, another author's income tracker. Install it and open it once, and SmartTorch remembers it (or Choose…); then open it from SmartTorch. It needs administrator rights, so Windows asks each time: press Yes. SmartTorch neither changes nor reads its data.
+
+**其他 · Other**
+- 「設定 › 一般」的「開遊戲時自動啟動」改為每個工具各自一個開關：渴癮症助手、囚獸助手、易火。原本開啟的人兩個助手都保持開啟；易火預設關閉，而且只會自動開啟，不會在關遊戲時關閉。 Settings › General: starting with the game is now one switch per tool: Vorax helper, Tartarus helper and ETor. If it was on, both helpers stay on; ETor is off by default, and it's only opened, never closed with the game.
+
 ## v1.0.0
 
 **火炬之光：無限 輔助器中文版 改名為 SmartTorch，成為工具箱 · The Chinese edition is now SmartTorch, a toolbox**

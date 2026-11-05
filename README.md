@@ -23,10 +23,12 @@ An unofficial, player-made tool, not affiliated with the game's makers. It only 
 |---|---|---|
 | **渴癮症助手 · Vorax helper** | 「手術準備」畫面標示建議的卡牌與培養槽、這一步達到 840k（彩箱）的機率，並在培養槽下方顯示讀到的內容，一眼核對。支援繁體、簡體、英文客戶端。 | Surgical Preparation: marks the card and tanks to pick and the odds of reaching 840k, with what was read under each tank to check at a glance. Traditional Chinese, Simplified Chinese and English clients. |
 | **囚獸助手 · Tartarus helper** | glcoder 的 [Tartarus Solver](https://github.com/glcoder/TartarusSolver)：自行下載後，SmartTorch 負責啟動、收起它的視窗、顯示統計。 | glcoder's [Tartarus Solver](https://github.com/glcoder/TartarusSolver): download it yourself; SmartTorch starts it, keeps its window out of the way and shows its statistics. |
+| **易火 · ETor** | 其他作者的收益統計工具「易火 ETor」的啟動器：自行安裝後，可在 SmartTorch 開啟它，或開遊戲時自動開啟。SmartTorch 不會修改或讀取它的資料。 | A launcher for ETor, another author's income tracker: install it yourself, then open it from SmartTorch or with the game. SmartTorch neither changes nor reads its data. |
+| **流派碼 · Build codes** | 儲存自己常用的流派碼，按「複製」後到遊戲裡貼上。 | Keep the build codes you use; Copy one and paste it in the game. |
 
-一個主視窗、右下角一個圖示：開遊戲時工具自動啟動，關遊戲時自動停止。介面有繁體、简体、English 三種。
+一個主視窗、右下角一個圖示：開遊戲時工具自動啟動（每個工具可各自設定），關遊戲時自動停止。介面有繁體、简体、English 三種。
 
-One main window and one tray icon: the tools start with the game and stop when it closes. The interface is in Traditional Chinese, Simplified Chinese or English.
+One main window and one tray icon: the tools start with the game (each can be set on its own) and stop when it closes. The interface is in Traditional Chinese, Simplified Chinese or English.
 
 ## 下載與使用 · Download and use
 
