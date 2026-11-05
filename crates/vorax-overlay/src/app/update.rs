@@ -112,14 +112,20 @@ fn aside(exe: &Path, ext: &str) -> PathBuf {
     PathBuf::from(s)
 }
 
-/// Downloads the release's overlay (`progress` from 0 to 1 as it comes), checks it, and swaps it in for this exe.
-/// Returns the exe to start.
-pub fn install(r: &Release, progress: impl Fn(f32) + Send + Sync + 'static) -> Result<PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+/// A GitHub API answer (the toolbox: another project's latest release).
+pub fn get_json(url: &str) -> Result<Value, String> {
     let c = client()?;
-    let uri = Uri::CreateUri(&HSTRING::from(r.url.as_str())).map_err(|e| e.to_string())?;
+    let uri = Uri::CreateUri(&HSTRING::from(url)).map_err(|e| e.to_string())?;
+    let text = c.GetStringAsync(&uri).and_then(|op| op.get()).map_err(|e| format!("GitHub: {e}"))?.to_string();
+    serde_json::from_str(&text).map_err(|e| e.to_string())
+}
+
+/// Downloads a file (`progress` from 0 to 1 as it comes) and checks it against GitHub's SHA-256.
+pub fn download(url: &str, size: u64, sha256: &str, progress: impl Fn(f32) + Send + Sync + 'static) -> Result<Vec<u8>, String> {
+    let c = client()?;
+    let uri = Uri::CreateUri(&HSTRING::from(url)).map_err(|e| e.to_string())?;
     let op = c.GetBufferAsync(&uri).map_err(|e| e.to_string())?;
-    let total = r.size.max(1) as f32;
+    let total = size.max(1) as f32;
     let _ = op.SetProgress(&AsyncOperationProgressHandler::new(move |_, p: &HttpProgress| {
         progress((p.BytesReceived as f32 / total).min(1.0));
         Ok(())
@@ -129,9 +135,17 @@ pub fn install(r: &Release, progress: impl Fn(f32) + Send + Sync + 'static) -> R
     let mut bytes = vec![0u8; buf.Length().map_err(|e| e.to_string())? as usize];
     reader.ReadBytes(&mut bytes).map_err(|e| e.to_string())?;
     let got = sha256_hex(&bytes);
-    if got != r.sha256 {
-        return Err(format!("the download doesn't match GitHub's SHA-256 ({} bytes): not installed", bytes.len()));
+    if got != sha256 {
+        return Err(format!("the download doesn't match GitHub's SHA-256 ({} bytes)", bytes.len()));
     }
+    Ok(bytes)
+}
+
+/// Downloads the release's overlay (`progress` from 0 to 1 as it comes), checks it, and swaps it in for this exe.
+/// Returns the exe to start.
+pub fn install(r: &Release, progress: impl Fn(f32) + Send + Sync + 'static) -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let bytes = download(&r.url, r.size, &r.sha256, progress).map_err(|e| format!("{e}: not installed"))?;
     let new = aside(&exe, ".new");
     std::fs::write(&new, &bytes).map_err(|e| format!("{}: {e}", new.display()))?;
     let old = aside(&exe, ".old");

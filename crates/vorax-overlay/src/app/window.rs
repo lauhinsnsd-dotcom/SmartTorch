@@ -49,6 +49,10 @@ pub enum ToUi {
     Read(String, bool),
     /// the toolbox: Ctrl+Alt+B set the last picture aside (how many are now), or why not
     Marked(Result<usize, String>),
+    /// the toolbox: 囚獸助手's latest release (its version), its install's progress (0-1) and outcome
+    TartLatest(String),
+    TartProgress(f32),
+    TartDone(Result<PathBuf, String>),
 }
 
 /// The game's log as the worker sees it.
@@ -93,6 +97,8 @@ const HK_MARK: i32 = 5;
 const TIMER_FOLLOW: usize = 1;
 /// the toolbox: Ctrl+Alt+B's note by the tray closes by itself
 const TIMER_CARD: usize = 2;
+/// the toolbox: once a second, 囚獸助手 looked after and the game's opening and closing followed
+const TIMER_TICK: usize = 3;
 const MENU_TOGGLE: u32 = 10;
 const MENU_SNAP: u32 = 11;
 const MENU_LOG: u32 = 12;
@@ -155,6 +161,12 @@ struct State {
     /// pictures set aside for the report (Ctrl+Alt+B), and the last report's zip
     marked: usize,
     report: Option<PathBuf>,
+    /// 囚獸助手: the module, its latest release, the installed version (looked up once per program)
+    tart: super::tartarus::Tart,
+    tart_latest: Option<String>,
+    tart_version: Option<(PathBuf, Option<String>)>,
+    /// the game's window was open at the last tick (its opening and closing start and stop the tools)
+    game_open: bool,
 }
 
 thread_local! {
@@ -203,11 +215,14 @@ pub fn create(fonts: Fonts, rx: Receiver<ToUi>, to_self: Sender<ToUi>, tx: Sende
         nid.szTip[..tip.len()].copy_from_slice(&tip);
         let _ = Shell_NotifyIconW(NIM_ADD, &nid);
         SetTimer(hwnd, TIMER_FOLLOW, 250, None);
+        SetTimer(hwnd, TIMER_TICK, 1000, None);
         super::hub::set_handler(from_hub);
         super::hub::set_close_handler(hub_closed);
         STATE.with(|s| {
-            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, show_read: true, to_self, update: None, updating: None, args, ocr: None, log_file: None, log_manual: false, last_read: None, running: true, up_to_date: false, stats: None, marked: super::report::marked(), report: None });
+            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, show_read: true, to_self, update: None, updating: None, args, ocr: None, log_file: None, log_manual: false, last_read: None, running: true, up_to_date: false, stats: None, marked: super::report::marked(), report: None, tart: super::tartarus::Tart::default(), tart_latest: None, tart_version: None, game_open: find_game_window().is_some() });
         });
+        // a 囚獸助手 left running hidden by a toolbox before this one (an update's restart): looked after again
+        with_state(|s| s.tart.adopt());
         Ok(Waker(Hwnd::of(hwnd)))
     }
 }
@@ -291,6 +306,23 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                                 SetTimer(s.hwnd, TIMER_CARD, 2500, None);
                             }
                         }
+                        ToUi::TartLatest(v) => s.tart_latest = Some(v),
+                        ToUi::TartProgress(p) => s.tart.busy = Some(p),
+                        ToUi::TartDone(r) => {
+                            s.tart.busy = None;
+                            s.tart_version = None;
+                            match r {
+                                Ok(exe) => {
+                                    note(&format!("囚獸助手 ready: {}", exe.display()));
+                                    s.tart.error = None;
+                                    s.tart.start(&exe);
+                                }
+                                Err(e) => {
+                                    note(&format!("Tartarus Solver not installed: {e}"));
+                                    s.tart.error = Some(format!("安裝失敗：{e}"));
+                                }
+                            }
+                        }
                         ToUi::Read(text, warn) => {
                             // a run may have just ended: count again
                             if text.starts_with("手術方案") {
@@ -344,6 +376,12 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
         WM_TIMER if wp.0 == TIMER_CARD => {
             let _ = KillTimer(hwnd, TIMER_CARD);
             super::menu::close();
+            LRESULT(0)
+        }
+        WM_TIMER if wp.0 == TIMER_TICK => {
+            if with_state(tick).unwrap_or(false) {
+                push_state();
+            }
             LRESULT(0)
         }
         WM_TIMER if wp.0 == TIMER_FOLLOW => {
@@ -437,7 +475,13 @@ fn set_shelley(s: &mut State, level: i32) {
 }
 
 unsafe fn quit(hwnd: HWND) {
-    with_state(|s| s.tx.send(ToWorker::Quit).ok());
+    with_state(|s| {
+        // the toolbox closing closes the tools it started
+        if s.tart.want {
+            s.tart.stop();
+        }
+        s.tx.send(ToWorker::Quit).ok()
+    });
     let _ = DestroyWindow(hwnd);
 }
 
@@ -747,6 +791,7 @@ fn state_json(s: &mut State) -> String {
             "marked": s.marked,
             "report": s.report.as_ref().map(|p| p.display().to_string()),
         },
+        "tartarus": tartarus_json(s),
     })
     .to_string()
 }
@@ -783,7 +828,14 @@ fn from_hub(text: &str) {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return };
     let cmd = v["cmd"].as_str().unwrap_or("");
     match cmd {
-        "ready" | "refresh" => {}
+        "ready" => {
+            with_state(|s| {
+                if s.tart_latest.is_none() {
+                    check_tartarus(s);
+                }
+            });
+        }
+        "refresh" => {}
         "set" => {
             let value = v["value"].clone();
             with_state(|s| match v["key"].as_str().unwrap_or("") {
@@ -883,6 +935,38 @@ fn from_hub(text: &str) {
         "update" => {
             with_state(start_update);
         }
+        "tartarus" => {
+            let on = v["on"].as_bool().unwrap_or(true);
+            with_state(|s| {
+                if on {
+                    if let Some(exe) = tart_exe(s) {
+                        s.tart.start(&exe);
+                    }
+                } else {
+                    s.tart.stop();
+                }
+            });
+        }
+        "tartarusShow" => {
+            let on = v["on"].as_bool().unwrap_or(true);
+            with_state(|s| s.tart.show(on));
+        }
+        "tartarusInstall" => {
+            with_state(install_tartarus);
+        }
+        "tartarusChoose" => {
+            if let Some(p) = super::sys::choose_tartarus(super::hub::hwnd()) {
+                with_state(|s| {
+                    note(&format!("Tartarus Solver chosen: {}", p.display()));
+                    s.settings.tartarus_exe = Some(p);
+                    s.settings.save();
+                    s.tart_version = None;
+                });
+            }
+        }
+        "tartarusCheck" => {
+            with_state(|s| check_tartarus(s));
+        }
         "report" => {
             let version = update::current();
             match super::report::pack(&version) {
@@ -915,4 +999,132 @@ pub fn open_hub_later(guide: bool) {
     with_state(|s| unsafe {
         let _ = PostMessageW(s.hwnd, WM_OPEN_HUB, WPARAM(guide as usize), LPARAM(0));
     });
+}
+
+/// 囚獸助手's program, when installed.
+fn tart_exe(s: &State) -> Option<PathBuf> {
+    super::tartarus::installed(s.settings.tartarus_exe.as_deref())
+}
+
+/// Once a second: 囚獸助手 looked after, and the tools started as the game opens and stopped as it closes (when
+/// that's on). Whether the main window should be told.
+fn tick(s: &mut State) -> bool {
+    let exe = tart_exe(s);
+    let mut changed = s.tart.tick(exe.as_deref());
+    let open = find_game_window().is_some();
+    if open != s.game_open {
+        s.game_open = open;
+        changed = true;
+        if s.settings.auto_game {
+            note(if open { "the game opened: starting the tools" } else { "the game closed: stopping the tools" });
+            if open {
+                if !s.running {
+                    s.running = true;
+                    let _ = s.tx.send(ToWorker::Pause(false));
+                }
+                if let Some(exe) = &exe {
+                    s.tart.start(exe);
+                }
+            } else {
+                if s.running {
+                    s.running = false;
+                    let _ = s.tx.send(ToWorker::Pause(true));
+                    s.placed = None;
+                    follow(s);
+                }
+                if s.tart.want {
+                    s.tart.stop();
+                }
+            }
+        }
+    }
+    changed
+}
+
+/// Looks up 囚獸助手's latest release on its own thread.
+fn check_tartarus(s: &State) {
+    let (tx, waker) = (s.to_self.clone(), Waker(Hwnd::of(s.hwnd)));
+    std::thread::spawn(move || {
+        unsafe {
+            let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED);
+        }
+        match super::tartarus::latest() {
+            Ok(l) => {
+                let _ = tx.send(ToUi::TartLatest(l.version));
+                waker.wake();
+            }
+            Err(e) => note(&format!("Tartarus Solver's latest release: {e}")),
+        }
+    });
+}
+
+/// Installs 囚獸助手 (or updates it in place) on its own thread: stopped first, started again when done.
+fn install_tartarus(s: &mut State) {
+    if s.tart.busy.is_some() {
+        return;
+    }
+    let existing = tart_exe(s);
+    let first = existing.is_none();
+    let target = existing.as_ref().and_then(|e| e.parent().map(|p| p.to_path_buf())).unwrap_or_else(|| super::tartarus::home().join("TartarusSolver"));
+    if s.tart.running {
+        s.tart.stop();
+    }
+    s.tart.busy = Some(0.0);
+    s.tart.error = None;
+    let ui = first.then_some(if crate::zh::simplified() { "zh" } else { "zhTw" });
+    let (tx, waker) = (s.to_self.clone(), Waker(Hwnd::of(s.hwnd)));
+    std::thread::spawn(move || {
+        unsafe {
+            let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED);
+        }
+        // a running one closing first (it was asked to): its files can't be replaced while it runs
+        for _ in 0..20 {
+            if !target.join("TartarusSolver.exe").is_file() || std::fs::OpenOptions::new().write(true).open(target.join("TartarusSolver.exe")).is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        let progress_tx = std::sync::Mutex::new(tx.clone());
+        let last = std::sync::atomic::AtomicU32::new(0);
+        let out = super::tartarus::install(&target, ui, move |p| {
+            let pct = (p * 100.0) as u32;
+            if last.swap(pct, std::sync::atomic::Ordering::Relaxed) != pct {
+                if let Ok(t) = progress_tx.lock() {
+                    let _ = t.send(ToUi::TartProgress(p));
+                }
+                waker.wake();
+            }
+        });
+        let _ = tx.send(ToUi::TartDone(out));
+        waker.wake();
+    });
+}
+
+/// 囚獸助手 as the main window shows it.
+fn tartarus_json(s: &mut State) -> serde_json::Value {
+    let exe = tart_exe(s);
+    if let Some(e) = &exe {
+        if s.tart_version.as_ref().is_none_or(|(p, _)| p != e) {
+            s.tart_version = Some((e.clone(), super::tartarus::version(e)));
+        }
+    }
+    let version = s.tart_version.as_ref().and_then(|(_, v)| v.clone());
+    let stats = super::tartarus::stats();
+    let newer = match (&s.tart_latest, &version) {
+        (Some(l), Some(v)) => super::tartarus::newer(l, v),
+        _ => false,
+    };
+    serde_json::json!({
+        "installed": exe.is_some(),
+        "exe": exe.as_ref().map(|p| p.display().to_string()),
+        "version": version,
+        "latest": s.tart_latest,
+        "newer": newer,
+        "running": s.tart.running,
+        "want": s.tart.want,
+        "shown": s.tart.shown,
+        "busy": s.tart.busy,
+        "error": s.tart.error,
+        "stats": stats.map(|(r, c)| serde_json::json!({ "runs": r, "chromatic": c })),
+    })
 }

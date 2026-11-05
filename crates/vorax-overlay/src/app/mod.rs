@@ -6,6 +6,7 @@ mod hub;
 mod menu;
 mod logview;
 mod report;
+mod tartarus;
 mod ocr;
 mod sys;
 mod update;

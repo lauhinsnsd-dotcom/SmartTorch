@@ -263,6 +263,9 @@ pub struct Settings {
     /// the toolbox: the "still running in the tray" note has been shown
     #[serde(default)]
     pub close_hint_shown: bool,
+    /// the toolbox: 囚獸助手's program chosen by hand (else the toolbox's own install)
+    #[serde(default)]
+    pub tartarus_exe: Option<PathBuf>,
 }
 
 fn yes() -> bool {
@@ -271,7 +274,7 @@ fn yes() -> bool {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, stats_since: 0.0, first_run_done: false, close_hint_shown: false }
+        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, stats_since: 0.0, first_run_done: false, close_hint_shown: false, tartarus_exe: None }
     }
 }
 
@@ -315,17 +318,24 @@ pub fn set_start_with_windows(on: bool) {
 
 /// Windows' file dialog for the game's log (UE_game.log); None when cancelled.
 pub fn choose_log(owner: Option<Hwnd>) -> Option<PathBuf> {
+    choose_file(owner, w!("選擇遊戲日誌 UE_game.log"), &[(w!("遊戲日誌 (UE_game.log)"), w!("UE_game.log")), (w!("記錄檔 (*.log)"), w!("*.log"))])
+}
+
+/// Windows' file dialog for 囚獸助手's program (TartarusSolver.exe); None when cancelled.
+pub fn choose_tartarus(owner: Option<Hwnd>) -> Option<PathBuf> {
+    choose_file(owner, w!("選擇囚獸助手 TartarusSolver.exe"), &[(w!("囚獸助手 (TartarusSolver.exe)"), w!("TartarusSolver.exe"))])
+}
+
+/// Windows' file dialog: a file to open, of these kinds (name, pattern); None when cancelled.
+fn choose_file(owner: Option<Hwnd>, title: PCWSTR, kinds: &[(PCWSTR, PCWSTR)]) -> Option<PathBuf> {
     use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_INPROC_SERVER};
     use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
     use windows::Win32::UI::Shell::{FileOpenDialog, IFileOpenDialog, SIGDN_FILESYSPATH};
     unsafe {
         let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
-        let filters = [
-            COMDLG_FILTERSPEC { pszName: w!("遊戲日誌 (UE_game.log)"), pszSpec: w!("UE_game.log") },
-            COMDLG_FILTERSPEC { pszName: w!("記錄檔 (*.log)"), pszSpec: w!("*.log") },
-        ];
+        let filters: Vec<COMDLG_FILTERSPEC> = kinds.iter().map(|&(n, p)| COMDLG_FILTERSPEC { pszName: n, pszSpec: p }).collect();
         let _ = dialog.SetFileTypes(&filters);
-        let _ = dialog.SetTitle(w!("選擇遊戲日誌 UE_game.log"));
+        let _ = dialog.SetTitle(title);
         dialog.Show(owner.map(|h| h.get()).unwrap_or_default()).ok()?;
         let item = dialog.GetResult().ok()?;
         let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
