@@ -1,4 +1,4 @@
-// The icon in the .exe (Explorer, the taskbar, the tray): assets/vorax.ico, drawn by tools/make-icon.py.
+// The icon in the .exe (Explorer, the taskbar, the tray): assets/vorax.ico, drawn by dev/make_icon.py (SmartTorch: a flame with an S).
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         println!("cargo:rerun-if-changed=assets/vorax.rc");
