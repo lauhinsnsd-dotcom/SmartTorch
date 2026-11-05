@@ -194,7 +194,7 @@ function vorax() {
       <div class="k">文字辨識</div><div class="v">${ocr}</div><div></div>
       <div class="k">最後讀取</div><div class="v">${last}</div><div></div>
     </div>
-    <div class="tip"><b>讀不到或讀錯？</b> ① 按 Ctrl + Alt + X 重新讀取 → ② 仍然不對，請到 GitHub 回報問題（附上畫面截圖）。紅點的處理方法見 <button class="link" data-goto="help">設定 › 疑難排解</button></div>
+    <div class="tip"><b>讀不到或讀錯？</b> ① 按 Ctrl + Alt + X 重新讀取 → ② 仍然不對，按 Ctrl + Alt + B 記下這個畫面 → ③ 之後按下方「回報問題」。紅點的處理方法見 <button class="link" data-goto="help">設定 › 疑難排解</button></div>
   </section>
   <section class="card" aria-label="渴癮症助手設定">
     <h2>設定</h2>
@@ -211,14 +211,19 @@ function vorax() {
       <div class="kk">Ctrl + Alt + X</div><div>立即讀取一次畫面</div>
       <div class="kk">Ctrl + Alt + V</div><div>顯示或隱藏提示</div>
       <div class="kk">Ctrl + Alt + D</div><div>顯示或隱藏讀取結果</div>
+      <div class="kk">Ctrl + Alt + B</div><div>記下讀錯的畫面（之後一併回報）</div>
       <div class="kk">Ctrl + Alt + Q</div><div>關閉工具箱</div>
     </div>
   </section>
-  <div class="row" style="justify-content:flex-end;gap:8px">
-    <button class="btn" data-cmd="runs">打開對局紀錄</button>
-    <button class="btn" data-confirm="resetStats">重設統計</button>
-    <button class="btn goldline" data-url="https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh/issues/new/choose">回報問題</button>
-  </div>`;
+  <div class="row" style="justify-content:space-between;gap:8px">
+    <div class="note">${v.marked ? `已記下 ${v.marked} 個畫面` : ""}</div>
+    <div class="row" style="gap:8px">
+      <button class="btn" data-cmd="runs">打開對局紀錄</button>
+      <button class="btn" data-confirm="resetStats">重設統計</button>
+      <button class="btn goldline" data-cmd="report">回報問題</button>
+    </div>
+  </div>
+  ${v.report ? `<div class="tip">已在桌面建立 <b>${esc(v.report.split("\\").pop())}</b>，並開啟了回報頁面：把這個 zip 拖進頁面，寫下發生了什麼即可。</div>` : ""}`;
 }
 
 function tartarus() {
@@ -268,7 +273,7 @@ function help() {
   const items = [
     ["找不到遊戲日誌", "先開啟遊戲。仍然找不到：確認已在遊戲中開啟日誌（Esc →「帳號相關」→「開啟日誌」，再登出登入），或在「渴癮症助手」頁按「選擇…」，選遊戲資料夾裡的 Game\\UE_game\\TorchLight\\Saved\\Logs\\UE_game.log。"],
     ["找到日誌，但遊戲沒有寫入", "遊戲尚未開啟日誌。按 Esc →「帳號相關」→「開啟日誌」，然後登出再登入，狀態就會變綠。"],
-    ["解析度不在支援範圍", "渴癮症助手目前支援 2560×1440 與 3840×2160。其他解析度可能讀錯，建議改用其中一種；若想支援你的解析度，請回報問題並附上遊戲截圖。"],
+    ["解析度不在支援範圍", "渴癮症助手目前支援 2560×1440 與 3840×2160。其他解析度可能讀錯，建議改用其中一種；若想支援你的解析度，請用 Ctrl + Alt + B 記下畫面並回報問題。"],
     ["遊戲是獨佔全螢幕", "提示無法疊在獨佔全螢幕上。請在遊戲設定把顯示模式改為「無邊框」或「視窗」。"],
   ];
   return items.map(([t, b]) => `<div class="problem"><b>${dot("r")}${t}</b><p>${esc(b)}</p></div>`).join("");

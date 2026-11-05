@@ -335,6 +335,21 @@ pub fn choose_log(owner: Option<Hwnd>) -> Option<PathBuf> {
     }
 }
 
+/// A local date and time for a file name ("20261105-1430"), from seconds since 1970.
+pub fn local_stamp(secs: u64) -> String {
+    use windows::Win32::Foundation::{FILETIME, SYSTEMTIME};
+    use windows::Win32::System::Time::{FileTimeToSystemTime, SystemTimeToTzSpecificLocalTime};
+    let ft = secs * 10_000_000 + 116_444_736_000_000_000;
+    let ft = FILETIME { dwLowDateTime: ft as u32, dwHighDateTime: (ft >> 32) as u32 };
+    let (mut utc, mut l) = (SYSTEMTIME::default(), SYSTEMTIME::default());
+    unsafe {
+        if FileTimeToSystemTime(&ft, &mut utc).is_err() || SystemTimeToTzSpecificLocalTime(None, &utc, &mut l).is_err() {
+            return secs.to_string();
+        }
+    }
+    format!("{}{:02}{:02}-{:02}{:02}{:02}", l.wYear, l.wMonth, l.wDay, l.wHour, l.wMinute, l.wSecond)
+}
+
 /// The game in exclusive full screen (the overlay can't be seen over it): Windows says a Direct3D program has the
 /// whole screen.
 pub fn exclusive_full_screen() -> bool {

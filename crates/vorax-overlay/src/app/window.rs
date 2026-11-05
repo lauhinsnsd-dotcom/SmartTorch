@@ -47,6 +47,8 @@ pub enum ToUi {
     LogFile(Option<PathBuf>, bool),
     /// the toolbox: what the last read made out, and whether something wasn't read
     Read(String, bool),
+    /// the toolbox: Ctrl+Alt+B set the last picture aside (how many are now), or why not
+    Marked(Result<usize, String>),
 }
 
 /// The game's log as the worker sees it.
@@ -74,6 +76,8 @@ pub enum ToWorker {
     LogPath(Option<PathBuf>),
     /// the toolbox's Stop (true) and Start (false)
     Pause(bool),
+    /// Ctrl+Alt+B: the last picture set aside for the report
+    Mark,
     Quit,
 }
 
@@ -84,7 +88,11 @@ const HK_SNAP: i32 = 2;
 const HK_QUIT: i32 = 3;
 /// not in upstream: show or hide what was read (Ctrl+Alt+D)
 const HK_READ: i32 = 4;
+/// the toolbox: the last picture set aside for the report (Ctrl+Alt+B)
+const HK_MARK: i32 = 5;
 const TIMER_FOLLOW: usize = 1;
+/// the toolbox: Ctrl+Alt+B's note by the tray closes by itself
+const TIMER_CARD: usize = 2;
 const MENU_TOGGLE: u32 = 10;
 const MENU_SNAP: u32 = 11;
 const MENU_LOG: u32 = 12;
@@ -144,6 +152,9 @@ struct State {
     up_to_date: bool,
     /// the statistics, as last counted from the log (counting reads a few MB: not at every refresh)
     stats: Option<((usize, usize, f64), std::time::Instant)>,
+    /// pictures set aside for the report (Ctrl+Alt+B), and the last report's zip
+    marked: usize,
+    report: Option<PathBuf>,
 }
 
 thread_local! {
@@ -182,7 +193,7 @@ pub fn create(fonts: Fonts, rx: Receiver<ToUi>, to_self: Sender<ToUi>, tx: Sende
             instance,
             None,
         )?;
-        for (id, vk) in [(HK_TOGGLE, 'V'), (HK_SNAP, 'X'), (HK_QUIT, 'Q'), (HK_READ, 'D')] {
+        for (id, vk) in [(HK_TOGGLE, 'V'), (HK_SNAP, 'X'), (HK_QUIT, 'Q'), (HK_READ, 'D'), (HK_MARK, 'B')] {
             if RegisterHotKey(hwnd, id, HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0 | MOD_NOREPEAT.0), vk as u32).is_err() {
                 note(&format!("hotkey Ctrl+Alt+{vk} is taken by another program"));
             }
@@ -195,7 +206,7 @@ pub fn create(fonts: Fonts, rx: Receiver<ToUi>, to_self: Sender<ToUi>, tx: Sende
         super::hub::set_handler(from_hub);
         super::hub::set_close_handler(hub_closed);
         STATE.with(|s| {
-            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, show_read: true, to_self, update: None, updating: None, args, ocr: None, log_file: None, log_manual: false, last_read: None, running: true, up_to_date: false, stats: None });
+            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, show_read: true, to_self, update: None, updating: None, args, ocr: None, log_file: None, log_manual: false, last_read: None, running: true, up_to_date: false, stats: None, marked: super::report::marked(), report: None });
         });
         Ok(Waker(Hwnd::of(hwnd)))
     }
@@ -267,6 +278,19 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                             s.log_file = p;
                             s.log_manual = manual;
                         }
+                        ToUi::Marked(r) => {
+                            let rows = match &r {
+                                Ok(n) => {
+                                    s.marked = *n;
+                                    vec![Row::Header { title: "已記下這個畫面".into(), status: format!("共 {n} 個 · 之後在主視窗按「回報問題」") }]
+                                }
+                                Err(e) => vec![Row::Header { title: "沒有可記下的畫面".into(), status: e.clone() }],
+                            };
+                            super::menu::notify(s.hwnd, rows, s.fonts.clone());
+                            unsafe {
+                                SetTimer(s.hwnd, TIMER_CARD, 2500, None);
+                            }
+                        }
                         ToUi::Read(text, warn) => {
                             // a run may have just ended: count again
                             if text.starts_with("手術方案") {
@@ -317,6 +341,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
             super::hub::open(tab);
             LRESULT(0)
         }
+        WM_TIMER if wp.0 == TIMER_CARD => {
+            let _ = KillTimer(hwnd, TIMER_CARD);
+            super::menu::close();
+            LRESULT(0)
+        }
         WM_TIMER if wp.0 == TIMER_FOLLOW => {
             with_state(follow);
             LRESULT(0)
@@ -332,6 +361,9 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                 HK_QUIT => quit(hwnd),
                 HK_READ => {
                     with_state(toggle_read);
+                }
+                HK_MARK => {
+                    with_state(|s| s.tx.send(ToWorker::Mark).ok());
                 }
                 _ => {}
             }
@@ -712,6 +744,8 @@ fn state_json(s: &mut State) -> String {
             "ocr": match &s.ocr { None => serde_json::Value::Null, Some(None) => serde_json::Value::Bool(false), Some(Some(l)) => serde_json::Value::String(l.clone()) },
             "last": s.last_read.as_ref().map(|(t, warn, at)| serde_json::json!({ "text": t, "warn": warn, "ago": at.elapsed().as_secs() })),
             "stats": { "games": stats.0, "rainbow": stats.1, "mean": stats.2 },
+            "marked": s.marked,
+            "report": s.report.as_ref().map(|p| p.display().to_string()),
         },
     })
     .to_string()
@@ -848,6 +882,20 @@ fn from_hub(text: &str) {
         }
         "update" => {
             with_state(start_update);
+        }
+        "report" => {
+            let version = update::current();
+            match super::report::pack(&version) {
+                Ok(zip) => {
+                    with_state(|s| {
+                        s.marked = 0;
+                        s.report = Some(zip.clone());
+                    });
+                    super::report::show_in_folder(&zip);
+                    super::hub::open_url("https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh/issues/new?template=bug.yml");
+                }
+                Err(e) => note(&format!("report not packed: {e}")),
+            }
         }
         "firstRunDone" => {
             with_state(|s| {

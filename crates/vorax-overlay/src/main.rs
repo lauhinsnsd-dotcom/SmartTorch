@@ -11,6 +11,7 @@
 mod draw;
 mod pipeline;
 mod zh;
+mod zipw;
 #[cfg(windows)]
 mod app;
 

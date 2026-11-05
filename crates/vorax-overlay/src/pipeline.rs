@@ -202,8 +202,18 @@ pub fn decode_png(path: &std::path::Path) -> Result<Img, String> {
 }
 
 pub fn encode_png(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) -> Result<(), String> {
+    encode_png_with(path, w, h, rgba, png::Compression::Default)
+}
+
+/// A picture saved quickly (bigger file): the toolbox's last pictures, kept for reporting a misread.
+pub fn encode_png_fast(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) -> Result<(), String> {
+    encode_png_with(path, w, h, rgba, png::Compression::Fast)
+}
+
+fn encode_png_with(path: &std::path::Path, w: u32, h: u32, rgba: &[u8], level: png::Compression) -> Result<(), String> {
     let file = std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w, h);
+    enc.set_compression(level);
     enc.set_color(png::ColorType::Rgba);
     enc.set_depth(png::BitDepth::Eight);
     let mut wr = enc.write_header().map_err(|e| e.to_string())?;

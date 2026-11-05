@@ -5,6 +5,7 @@ mod capture;
 mod hub;
 mod menu;
 mod logview;
+mod report;
 mod ocr;
 mod sys;
 mod update;

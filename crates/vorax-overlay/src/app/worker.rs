@@ -73,6 +73,8 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
         note(&format!("saving every picture read to {}", dir.display()));
     }
     let mut opts = opts;
+    // the last picture read, kept for Ctrl+Alt+B
+    let mut last_kept: Option<PathBuf> = None;
     // the toolbox's Stop: nothing read until Start
     let mut paused = false;
     let mut pipe = Pipeline::new(opts.shelley);
@@ -117,6 +119,7 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
                     game_log = None;
                     looked_for_log = Instant::now() - Duration::from_secs(60);
                 }
+                ToWorker::Mark => send(ToUi::Marked(super::report::mark(last_kept.as_deref()))),
                 ToWorker::Pause(on) => {
                     paused = on;
                     if on {
@@ -212,7 +215,10 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
             let only_reread = reread && !relook && due.is_none() && !manual && again.is_none();
             let quiet = (relook || reread) && due.is_none() && !manual && again.is_none();
             let label = if only_reread { "reread" } else { "manual" };
-            let (animating, missed) = read(&capturer, ocr.as_ref(), &mut pipe, trigger, label, manual || relook || reread, quiet, opts.frames.as_deref(), &send);
+            let (animating, missed, kept) = read(&capturer, ocr.as_ref(), &mut pipe, trigger, label, manual || relook || reread, quiet, opts.frames.as_deref(), &send);
+            if kept.is_some() {
+                last_kept = kept;
+            }
             if missed && rereads < REREADS && !settler.over {
                 rereads += 1;
                 reread_at = Some(Instant::now() + REREAD);
@@ -252,12 +258,13 @@ fn last_game_line_age(path: &Path) -> Option<Duration> {
 
 /// Takes a picture, reads it and advises: whether a card was in flight (nothing read), and whether the board was
 /// read with a card or tank not made out (the hint's "not read", outside the protocol rounds that get no advice).
-/// `label` names a read without a trigger in the log and the saved frames ("manual", "reread").
+/// `label` names a read without a trigger in the log and the saved frames ("manual", "reread"). The toolbox: also
+/// where the picture was kept for a report.
 #[allow(clippy::too_many_arguments)]
-fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Option<&str>, label: &str, now: bool, quiet: bool, frames: Option<&Path>, send: &dyn Fn(ToUi)) -> (bool, bool) {
+fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Option<&str>, label: &str, now: bool, quiet: bool, frames: Option<&Path>, send: &dyn Fn(ToUi)) -> (bool, bool, Option<PathBuf>) {
     let Some(game) = find_game_window() else {
         note("the game's window isn't open");
-        return (false, false);
+        return (false, false, None);
     };
     if !quiet {
         send(ToUi::Busy);
@@ -269,12 +276,12 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
         Ok(None) => {
             note("no picture from the game's window");
             send(ToUi::Unbusy);
-            return (false, false);
+            return (false, false, None);
         }
         Err(e) => {
             note(&format!("capture failed: {e}"));
             send(ToUi::Unbusy);
-            return (false, false);
+            return (false, false, None);
         }
     };
     let grabbed = t.elapsed().as_millis();
@@ -335,15 +342,17 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
             send(ToUi::Clear);
         }
     }
+    // the toolbox: every picture read kept for a while (the last 20), for Ctrl+Alt+B and the report
+    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+    let kept = super::report::keep(&format!("{ms}-{}-{kind}.png", trigger.unwrap_or(label)), frame.width, frame.height, &frame.data);
     if let Some(dir) = frames {
-        let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
         let path = dir.join(format!("{ms}-{}-{kind}.png", trigger.unwrap_or(label)));
         let saved = std::fs::create_dir_all(dir).map_err(|e| e.to_string()).and_then(|_| crate::pipeline::encode_png(&path, frame.width as u32, frame.height as u32, &frame.data));
         if let Err(e) = saved {
             note(&format!("frame not saved: {e}"));
         }
     }
-    (animating, missed)
+    (animating, missed, kept)
 }
 
 /// The toolbox's "last read" line: the screen and round, and what wasn't made out ("藥劑回合 5 · 第 2 張卡未讀到").

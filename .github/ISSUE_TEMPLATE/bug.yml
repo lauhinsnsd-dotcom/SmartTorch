@@ -5,8 +5,10 @@ body:
   - type: markdown
     attributes:
       value: |
-        感謝回報！請盡量附上記錄檔，沒有記錄檔通常很難找出原因。
-        記錄檔位置：在檔案總管的網址列輸入 `%APPDATA%\VoraxRs` 後按 Enter，裡面的 `overlay.log`（有 `overlay.log.old` 也一起附上）。
+        感謝回報！最有用的是火炬工具箱做好的回報檔：
+        1. 遊戲中讀錯時按 **Ctrl + Alt + B** 記下那個畫面（可以記好幾個）。
+        2. 打完後在工具箱「渴癮症助手」頁按 **回報問題**，桌面會出現「火炬工具箱回報-日期.zip」。
+        3. 把這個 zip 拖到下面「回報檔」欄位。
   - type: textarea
     id: what
     attributes:
@@ -42,20 +44,15 @@ body:
   - type: dropdown
     id: mode
     attributes:
-      label: 工具模式（系統匣「模式」）
+      label: 渴癮症助手的模式
       options:
-        - 保守
+        - 原作者
         - 衝分
-  - type: input
-    id: version
-    attributes:
-      label: 工具版本（系統匣選單最上方，例如 v0.2.2-zh.1）
   - type: textarea
     id: files
     attributes:
-      label: 記錄檔與畫面
+      label: 回報檔
       description: |
-        把 overlay.log 拖曳到這裡。
-        如果是用 start-zh-debug.bat 開啟，frames 資料夾裡檔名有 reread 或 manual 的圖片最有用，壓縮成 zip 再拖進來（不必全部附上）。
+        把桌面的「火炬工具箱回報-日期.zip」拖曳到這裡（裡面有記下的畫面、記錄檔與版本）。
     validations:
       required: true
