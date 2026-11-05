@@ -91,7 +91,7 @@ h2 { margin: 0; font-size: 16px; color: var(--gold2); }
   <nav aria-label="主選單">
     <div class="brand">
       <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#e3b25a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c2 3 5 5 5 9a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5 1-7.5z"/></svg>
-      <div><b>火炬工具箱</b><small>by FakerPlay</small></div>
+      <div><b>火炬工具箱</b><small>by 肥可</small></div>
     </div>
     <div class="navs" id="navs"></div>
     <div class="navfoot" id="navfoot"></div>
@@ -136,6 +136,7 @@ function nav() {
   const sc = S && S.script === "sc";
   document.getElementById("navfoot").innerHTML =
     `<div class="row" style="font-size:13px;color:var(--soft);gap:8px">${dot(game ? "g" : "n")}${game ? "遊戲已開啟" : "遊戲未開啟"}</div>
+     <div class="note" style="font-size:12px;line-height:1.6">完全免費 · 官方下載只有 <a href="#" data-url="https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh/releases">GitHub</a></div>
      <div class="seg" role="group" aria-label="介面文字" data-noconv>
        <button class="${sc ? "" : "on"}" aria-pressed="${!sc}" data-cmd="set" data-key="script" data-value="tc">繁體</button>
        <button class="${sc ? "on" : ""}" aria-pressed="${sc}" data-cmd="set" data-key="script" data-value="sc">简体</button>
@@ -185,6 +186,10 @@ function vorax() {
     <div class="stat"><b class="gold">${st.rainbow}</b><span>彩箱局數</span></div>
     <div class="stat"><b>${st.games ? st.mean.toFixed(1) + " 萬" : "—"}</b><span>平均分數</span></div>
   </div>
+  <div class="row" style="justify-content:flex-end;gap:8px;margin-top:-8px">
+    <button class="btn" data-cmd="runs">打開對局紀錄</button>
+    <button class="btn" data-confirm="clearRecords">清除紀錄</button>
+  </div>
   <section class="card" aria-label="連接狀態">
     <h2>連接狀態</h2>
     <div class="grid3">
@@ -196,6 +201,13 @@ function vorax() {
       <div class="k">最後讀取</div><div class="v">${last}</div><div></div>
     </div>
     <div class="tip"><b>讀不到或讀錯？</b> ① 按 Ctrl + Alt + X 重新讀取 → ② 仍然不對，按 Ctrl + Alt + B 記下這個畫面 → ③ 之後按下方「回報問題」。紅點的處理方法見 <button class="link" data-goto="help">設定 › 疑難排解</button></div>
+    <div class="row" style="justify-content:space-between;gap:8px">
+      <div class="row" style="gap:8px">${v.marked ? `<span class="note">已記下 ${v.marked} 個畫面</span>
+        <button class="btn small" data-cmd="markedOpen">開啟資料夾</button>
+        <button class="btn small" data-confirm="markedClear">清除</button>` : `<span class="note">尚未記下畫面</span>`}</div>
+      <button class="btn goldline" data-cmd="report">回報問題</button>
+    </div>
+    ${v.report ? `<div class="tip">已在桌面建立 <b>${esc(v.report.split("\\").pop())}</b>，並在瀏覽器開啟了回報頁面：把這個 zip 拖進頁面的「回報檔」欄，寫下發生了什麼即可（需要登入 GitHub）。</div>` : ""}
   </section>
   <section class="card" aria-label="渴癮症助手設定">
     <h2>設定</h2>
@@ -216,17 +228,7 @@ function vorax() {
       <div class="kk">Ctrl + Alt + Q</div><div>關閉工具箱</div>
     </div>
   </section>
-  <div class="row" style="justify-content:space-between;gap:8px">
-    <div class="row" style="gap:8px">${v.marked ? `<span class="note">已記下 ${v.marked} 個畫面</span>
-      <button class="btn small" data-cmd="markedOpen">開啟資料夾</button>
-      <button class="btn small" data-confirm="markedClear">清除</button>` : ""}</div>
-    <div class="row" style="gap:8px">
-      <button class="btn" data-cmd="runs">打開對局紀錄</button>
-      <button class="btn" data-confirm="clearRecords">清除紀錄</button>
-      <button class="btn goldline" data-cmd="report">回報問題</button>
-    </div>
-  </div>
-  ${v.report ? `<div class="tip">已在桌面建立 <b>${esc(v.report.split("\\").pop())}</b>，並在瀏覽器開啟了回報頁面：把這個 zip 拖進頁面的「回報檔」欄，寫下發生了什麼即可（需要登入 GitHub）。</div>` : ""}`;
+`;
 }
 
 function tartarus() {
@@ -303,6 +305,7 @@ function guide() {
     <div class="step"><div class="num">3</div><div><b>選擇實習生雪莉等級</b><p>決定手術用具可以刷新幾次，設錯會影響建議。目前：${S.vorax.shelley} 級（可刷新 ${S.vorax.rerolls} 次）。</p>
       <div class="row" style="gap:8px;margin-top:10px">${[1, 2, 3, 4, 5, 6].map((n) => `<button class="pill ${S.vorax.shelley === n ? "on" : ""}" data-cmd="set" data-key="shelley" data-value="${n}">${n}</button>`).join("")}</div></div></div>
     <p class="para sep">之後只要開遊戲，提示框就會出現在遊戲畫面上，照著做即可。</p>
+    <p class="para">本工具完全免費，官方下載只有 GitHub。如果你是付費取得的，你被騙了。</p>
     ${S.firstRunDone ? "" : `<button class="btn gold big" style="align-self:flex-start" data-cmd="firstRunDone" data-then="vorax">完成，開始使用</button>`}
   </section>`;
 }
@@ -321,13 +324,14 @@ function about() {
   return `
   <section class="card" aria-label="關於">
     <div><div style="font-size:18px;font-weight:700">火炬工具箱 v${esc(S.version)}</div>
-      <p class="para" style="margin-top:6px">由 FakerPlay 製作。非官方工具，只讀取遊戲畫面與日誌，不會操作遊戲、不讀取記憶體。是否使用第三方工具請自行判斷。</p>
+      <div class="tip" style="margin-top:10px"><b>本工具完全免費。</b>官方下載只有 GitHub：github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh。如果你是付費取得的，你被騙了，請向賣家退款並回報。</div>
+      <p class="para" style="margin-top:10px">由肥可製作。非官方工具，只讀取遊戲畫面與日誌，不會操作遊戲、不讀取記憶體。是否使用第三方工具請自行判斷。</p>
       <div class="row" style="gap:16px;margin-top:8px;font-size:14px">
         <a href="#" data-url="https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh">GitHub</a>
         <a href="#" data-url="https://github.com/lauhinsnsd-dotcom/vorax-solver-rs-zh/issues/new/choose">回報問題</a></div></div>
     <div class="sep" style="display:flex;flex-direction:column;gap:12px;font-size:14px">
       <div class="note" style="font-size:14px">感謝以下作者（皆為 MIT 授權）</div>
-      <div><b>渴癮症助手</b>：計算與讀取基於 DinoRaos 的 <a href="#" data-url="https://github.com/DinoRaos/vorax-solver-rs">vorax-solver-rs</a>；其前身為 tidewarden 的 Vorax Solver（2026-10-22 版）與 Moebing 的 <a href="#" data-url="https://github.com/Moebing/Torchlight-Infinite-SS11-Vorax-simulator">渴癮症模擬器</a>。中文支援與介面由 FakerPlay 製作。</div>
+      <div><b>渴癮症助手</b>：計算與讀取基於 DinoRaos 的 <a href="#" data-url="https://github.com/DinoRaos/vorax-solver-rs">vorax-solver-rs</a>；其前身為 tidewarden 的 Vorax Solver（2026-10-22 版）與 Moebing 的 <a href="#" data-url="https://github.com/Moebing/Torchlight-Infinite-SS11-Vorax-simulator">渴癮症模擬器</a>。中文支援與介面由肥可製作。</div>
       <div><b>囚獸助手</b>：glcoder 的 <a href="#" data-url="https://github.com/glcoder/TartarusSolver">Tartarus Solver</a>，原樣使用：由玩家自行下載，工具箱負責啟動與顯示。</div>
       <div class="note" style="font-size:14px">字型：Noto Sans TC／SC（SIL Open Font License 1.1）。授權全文見工具箱資料夾內的 LICENSE.txt 與 FONT-LICENSE.txt。</div>
     </div>
