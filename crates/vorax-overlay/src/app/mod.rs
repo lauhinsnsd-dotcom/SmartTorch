@@ -2,6 +2,7 @@
 //! (the log, the pictures, the reading and the advice).
 
 mod capture;
+mod hub;
 mod menu;
 mod logview;
 mod ocr;
@@ -141,6 +142,8 @@ pub fn run(args: &[String]) {
         }
         // physical pixels everywhere, so the overlay lines up with the captured picture at any display scaling
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        // the window thread is a single-threaded COM apartment: WebView2 (the main window) and the file dialog need one
+        let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
     }
     let mut settings = sys::Settings::load();
     if let Some(s) = arg::<i32>(args, "--shelley") {
@@ -157,6 +160,11 @@ pub fn run(args: &[String]) {
     }
     update::clean_up();
     sys::note(&format!("Vorax overlay v{} started (Intern Shelley level {}, odds of {})", update::current(), settings.shelley, vorax::data().odds));
+    // the toolbox's words: Traditional or Simplified, chosen once from Windows' language on the first run
+    if settings.script == crate::zh::AUTO && !settings.first_run_done {
+        settings.script = if sys::windows_simplified() { crate::zh::SIMPLIFIED } else { crate::zh::TRADITIONAL };
+        settings.save();
+    }
     crate::zh::set_mode(settings.script);
     vorax::bot::MEAN_GOAL.store(settings.aggressive, std::sync::atomic::Ordering::Relaxed);
     // the mode every start (not only the aggressive one), so the runs window can count each mode's games
@@ -174,8 +182,16 @@ pub fn run(args: &[String]) {
             return;
         }
     };
-    let opts = worker::Options { log: arg::<String>(args, "--log").map(PathBuf::from), shelley: settings.shelley, ocr: settings.ocr, ocr_lang: arg::<String>(args, "--ocr-lang"), frames: arg::<String>(args, "--frames").map(PathBuf::from) };
+    // a log given on the command line (the old start files), else the one chosen in the main window
+    let log = arg::<String>(args, "--log").map(PathBuf::from).or_else(|| settings.log_path.clone());
+    let opts = worker::Options { log, shelley: settings.shelley, ocr: settings.ocr, ocr_lang: arg::<String>(args, "--ocr-lang"), frames: arg::<String>(args, "--frames").map(PathBuf::from) };
     waker.wake();
+    // the main window at start, unless started with Windows (into the tray); the first-use steps the first time
+    if !settings.first_run_done {
+        window::open_hub_later(true);
+    } else if !args.iter().any(|a| a == "--tray" || a == "--after-update") {
+        window::open_hub_later(false);
+    }
     // a newer release on GitHub: offered in the tray menu
     let (check_tx, check_waker) = (to_ui.clone(), waker);
     std::thread::spawn(move || {

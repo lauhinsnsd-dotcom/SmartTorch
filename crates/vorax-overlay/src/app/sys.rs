@@ -248,11 +248,30 @@ pub struct Settings {
     /// not in upstream: the aggressive mode (衝分): futures judged by their plain final score (vorax::bot::MEAN_GOAL)
     #[serde(default)]
     pub aggressive: bool,
+    /// the toolbox: the game's log chosen by hand (else found by itself)
+    #[serde(default)]
+    pub log_path: Option<PathBuf>,
+    /// the toolbox: the tools started when the game opens and stopped when it closes
+    #[serde(default = "yes")]
+    pub auto_game: bool,
+    /// the toolbox: the runs counted in the statistics start here (log time, seconds; 0: all)
+    #[serde(default)]
+    pub stats_since: f64,
+    /// the toolbox: the first-use steps have been shown
+    #[serde(default)]
+    pub first_run_done: bool,
+    /// the toolbox: the "still running in the tray" note has been shown
+    #[serde(default)]
+    pub close_hint_shown: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false }
+        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, stats_since: 0.0, first_run_done: false, close_hint_shown: false }
     }
 }
 
@@ -263,6 +282,71 @@ impl Settings {
     pub fn save(&self) {
         let _ = std::fs::write(data_dir().join("settings.json"), serde_json::to_string_pretty(self).unwrap());
     }
+}
+
+/// The toolbox's entry in Windows' start-up list (HKCU\...\Run), started into the tray.
+const RUN_KEY: PCWSTR = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+const RUN_NAME: PCWSTR = w!("FireToolbox");
+
+/// Whether the toolbox starts with Windows.
+pub fn starts_with_windows() -> bool {
+    reg_string(HKEY_CURRENT_USER, RUN_KEY, RUN_NAME).is_some()
+}
+
+/// Starts the toolbox with Windows (into the tray), or not.
+pub fn set_start_with_windows(on: bool) {
+    use windows::Win32::System::Registry::{RegCloseKey, RegCreateKeyW, RegDeleteValueW, RegSetValueExW, REG_SZ};
+    unsafe {
+        let mut key = HKEY::default();
+        if RegCreateKeyW(HKEY_CURRENT_USER, RUN_KEY, &mut key).is_err() {
+            return;
+        }
+        if on {
+            let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default();
+            let cmd: Vec<u16> = format!("\"{exe}\" --tray").encode_utf16().chain(std::iter::once(0)).collect();
+            let bytes = std::slice::from_raw_parts(cmd.as_ptr() as *const u8, cmd.len() * 2);
+            let _ = RegSetValueExW(key, RUN_NAME, 0, REG_SZ, Some(bytes));
+        } else {
+            let _ = RegDeleteValueW(key, RUN_NAME);
+        }
+        let _ = RegCloseKey(key);
+    }
+}
+
+/// Windows' file dialog for the game's log (UE_game.log); None when cancelled.
+pub fn choose_log(owner: Option<Hwnd>) -> Option<PathBuf> {
+    use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_INPROC_SERVER};
+    use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
+    use windows::Win32::UI::Shell::{FileOpenDialog, IFileOpenDialog, SIGDN_FILESYSPATH};
+    unsafe {
+        let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
+        let filters = [
+            COMDLG_FILTERSPEC { pszName: w!("遊戲日誌 (UE_game.log)"), pszSpec: w!("UE_game.log") },
+            COMDLG_FILTERSPEC { pszName: w!("記錄檔 (*.log)"), pszSpec: w!("*.log") },
+        ];
+        let _ = dialog.SetFileTypes(&filters);
+        let _ = dialog.SetTitle(w!("選擇遊戲日誌 UE_game.log"));
+        dialog.Show(owner.map(|h| h.get()).unwrap_or_default()).ok()?;
+        let item = dialog.GetResult().ok()?;
+        let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let path = String::from_utf16_lossy(name.as_wide());
+        CoTaskMemFree(Some(name.0 as *const _));
+        Some(PathBuf::from(path))
+    }
+}
+
+/// The game in exclusive full screen (the overlay can't be seen over it): Windows says a Direct3D program has the
+/// whole screen.
+pub fn exclusive_full_screen() -> bool {
+    use windows::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_RUNNING_D3D_FULL_SCREEN};
+    unsafe { SHQueryUserNotificationState().is_ok_and(|s| s == QUNS_RUNNING_D3D_FULL_SCREEN) }
+}
+
+/// Windows' own language is Simplified Chinese (the toolbox's words start in Simplified then).
+pub fn windows_simplified() -> bool {
+    use windows::Win32::Globalization::GetUserDefaultUILanguage;
+    // zh-CN 0x0804, zh-SG 0x1004
+    matches!(unsafe { GetUserDefaultUILanguage() }, 0x0804 | 0x1004)
 }
 
 #[cfg(test)]

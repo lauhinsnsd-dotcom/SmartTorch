@@ -39,6 +39,14 @@ pub enum ToUi {
     UpdateFailed(String),
     /// the update is in place: start it, and close this one
     Restart(PathBuf),
+    /// the toolbox: the check for a newer release found none
+    UpToDate,
+    /// the toolbox: Windows' text reader in use (its language), or none
+    Ocr(Option<String>),
+    /// the toolbox: the game's log followed (None: not found), and whether it was chosen by hand
+    LogFile(Option<PathBuf>, bool),
+    /// the toolbox: what the last read made out, and whether something wasn't read
+    Read(String, bool),
 }
 
 /// The game's log as the worker sees it.
@@ -62,6 +70,10 @@ pub enum ToWorker {
     Snap,
     /// the Intern Shelley level changed: advise the board again
     Shelley(i32),
+    /// the toolbox: follow this log (chosen by hand), or find it again (None)
+    LogPath(Option<PathBuf>),
+    /// the toolbox's Stop (true) and Start (false)
+    Pause(bool),
     Quit,
 }
 
@@ -92,6 +104,10 @@ const MENU_LOG_HELP: u32 = 17;
 const MENU_UPDATE: u32 = 60;
 const MENU_UPDATE_NOW: u32 = 61;
 const MENU_RELEASE_PAGE: u32 = 62;
+/// the toolbox's main window
+const MENU_HUB: u32 = 70;
+/// the main window, opened from the message loop (never from inside the state's borrow)
+const WM_OPEN_HUB: u32 = WM_APP + 3;
 
 struct State {
     hwnd: HWND,
@@ -118,6 +134,16 @@ struct State {
     updating: Option<f32>,
     /// the arguments to start the updated overlay with
     args: Vec<String>,
+    /// the toolbox: Windows' text reader (once the worker has tried it), the log followed and how it was found,
+    /// the last read, whether the tool runs (its Stop), whether a check found no newer release
+    ocr: Option<Option<String>>,
+    log_file: Option<PathBuf>,
+    log_manual: bool,
+    last_read: Option<(String, bool, std::time::Instant)>,
+    running: bool,
+    up_to_date: bool,
+    /// the statistics, as last counted from the log (counting reads a few MB: not at every refresh)
+    stats: Option<((usize, usize, f64), std::time::Instant)>,
 }
 
 thread_local! {
@@ -162,12 +188,14 @@ pub fn create(fonts: Fonts, rx: Receiver<ToUi>, to_self: Sender<ToUi>, tx: Sende
             }
         }
         let mut nid = NOTIFYICONDATAW { cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32, hWnd: hwnd, uID: 1, uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP, uCallbackMessage: WM_TRAY, hIcon: app_icon(instance), ..Default::default() };
-        let tip: Vec<u16> = "Vorax 輔助器中文版（Ctrl+Alt+V 顯示／隱藏）".encode_utf16().collect();
+        let tip: Vec<u16> = "火炬工具箱".encode_utf16().collect();
         nid.szTip[..tip.len()].copy_from_slice(&tip);
         let _ = Shell_NotifyIconW(NIM_ADD, &nid);
         SetTimer(hwnd, TIMER_FOLLOW, 250, None);
+        super::hub::set_handler(from_hub);
+        super::hub::set_close_handler(hub_closed);
         STATE.with(|s| {
-            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, show_read: true, to_self, update: None, updating: None, args });
+            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, show_read: true, to_self, update: None, updating: None, args, ocr: None, log_file: None, log_manual: false, last_read: None, running: true, up_to_date: false, stats: None });
         });
         Ok(Waker(Hwnd::of(hwnd)))
     }
@@ -228,7 +256,23 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                         }
                         ToUi::Update(r) => {
                             s.update = Some(r);
-                            update_offer(s);
+                            s.up_to_date = false;
+                            if !super::hub::shown() {
+                                update_offer(s);
+                            }
+                        }
+                        ToUi::UpToDate => s.up_to_date = true,
+                        ToUi::Ocr(o) => s.ocr = Some(o),
+                        ToUi::LogFile(p, manual) => {
+                            s.log_file = p;
+                            s.log_manual = manual;
+                        }
+                        ToUi::Read(text, warn) => {
+                            // a run may have just ended: count again
+                            if text.starts_with("手術方案") {
+                                s.stats = None;
+                            }
+                            s.last_read = Some((text, warn, std::time::Instant::now()));
                         }
                         ToUi::UpdateProgress(p) => {
                             s.updating = Some(p);
@@ -265,6 +309,12 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                     follow(s);
                 }
             });
+            push_state();
+            LRESULT(0)
+        }
+        WM_OPEN_HUB => {
+            let tab = if wp.0 == 1 { Some("settings:guide") } else { None };
+            super::hub::open(tab);
             LRESULT(0)
         }
         WM_TIMER if wp.0 == TIMER_FOLLOW => {
@@ -289,7 +339,9 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
         }
         WM_TRAY => {
             let event = (lp.0 & 0xffff) as u32;
-            if event == WM_RBUTTONUP || event == WM_LBUTTONUP {
+            if event == WM_LBUTTONUP {
+                super::hub::open(None);
+            } else if event == WM_RBUTTONUP {
                 tray_menu(hwnd);
             }
             LRESULT(0)
@@ -299,6 +351,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
             LRESULT(0)
         }
         WM_DESTROY => {
+            super::hub::destroy();
             let nid = NOTIFYICONDATAW { cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32, hWnd: hwnd, uID: 1, ..Default::default() };
             let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
             PostQuitMessage(0);
@@ -315,14 +368,6 @@ fn toggle(s: &mut State) {
     follow(s);
 }
 
-/// The tray's line for the words' writing (not in upstream): the setting, and in auto what it follows now.
-fn script_label() -> String {
-    match crate::zh::mode() {
-        crate::zh::TRADITIONAL => "文字：繁體".into(),
-        crate::zh::SIMPLIFIED => "文字：簡體".into(),
-        _ => format!("文字：自動（目前{}）", if crate::zh::simplified() { "簡體" } else { "繁體" }),
-    }
-}
 
 /// Auto, Traditional, Simplified in turn (not in upstream), kept in the settings.
 fn next_script(s: &mut State) {
@@ -333,10 +378,6 @@ fn next_script(s: &mut State) {
     follow(s);
 }
 
-/// The tray's line for the advice's mode (not in upstream).
-fn mode_label() -> String {
-    if vorax::bot::mean_goal() { "模式：衝分".into() } else { "模式：保守（原作者）".into() }
-}
 
 /// Upstream's mode and the aggressive one in turn (not in upstream), kept in the settings; the board read again so
 /// the advice shown is the new mode's.
@@ -368,49 +409,25 @@ unsafe fn quit(hwnd: HWND) {
     let _ = DestroyWindow(hwnd);
 }
 
-fn rerolls_hint(level: i32) -> String {
-    format!("手術用具可刷新 {} 次", crate::pipeline::shelley_rerolls(level))
-}
 
-/// Opens the tray menu (menu.rs), with the overlay's state as it is now.
+/// Opens the tray menu (menu.rs): the toolbox's tools, the main window, quitting. Everything else is in the
+/// main window.
 fn tray_menu(hwnd: HWND) {
     let Some((rows, fonts)) = with_state(|s| {
         let status = match &s.update {
             Some(r) => format!("v{} · 有新版本：v{}", update::current(), r.version),
-            None => format!("v{} · 機率資料 {}", update::current(), vorax::data().odds),
+            None => format!("v{}", update::current()),
         };
-        let mut rows = vec![Row::Header { title: "Vorax 輔助器中文版".into(), status }];
-        if let Some(r) = &s.update {
-            let label = match s.updating {
-                Some(p) => format!("正在更新到 v{}… {:.0}%", r.version, p * 100.0),
-                None => format!("更新到 v{}", r.version),
-            };
-            rows.push(Row::Action { id: MENU_UPDATE, label, shortcut: "更新內容".into() });
-        }
-        match s.game_log {
-            Some(GameLog::On) => rows.push(Row::Text("遊戲日誌已開啟：會自動讀取畫面".into())),
-            Some(GameLog::Off) => {
-                rows.push(Row::Warn("遊戲日誌未開啟：不會自動讀取畫面".into()));
-                rows.push(Row::Action { id: MENU_LOG_HELP, label: "如何開啟遊戲日誌".into(), shortcut: String::new() });
-            }
-            Some(GameLog::Missing) => {
-                rows.push(Row::Warn("找不到遊戲日誌（UE_game.log）".into()));
-                rows.push(Row::Action { id: MENU_LOG_HELP, label: "怎麼辦".into(), shortcut: String::new() });
-            }
-            Some(GameLog::Checking) => rows.push(Row::Text("遊戲日誌：檢查中…".into())),
-            Some(GameLog::NoGame) | None => rows.push(Row::Text("遊戲日誌：等待遊戲開啟".into())),
+        let mut rows = vec![Row::Header { title: "火炬工具箱".into(), status }];
+        rows.push(Row::Text(format!("渴癮症助手：{}", if s.running { "執行中" } else { "已停止" })));
+        if s.game_log == Some(GameLog::Off) {
+            rows.push(Row::Warn("遊戲日誌未開啟：不會自動讀取畫面".into()));
         }
         rows.push(Row::Separator);
         rows.push(Row::Switch { id: MENU_TOGGLE, label: "顯示提示（Ctrl+Alt+V）".into(), on: s.settings.shown });
         rows.push(Row::Action { id: MENU_SNAP, label: "立即讀取畫面".into(), shortcut: "Ctrl+Alt+X".into() });
-        rows.push(Row::Switch { id: MENU_READ, label: "顯示讀取結果（Ctrl+Alt+D）".into(), on: s.show_read });
-        rows.push(Row::Action { id: MENU_SCRIPT, label: script_label(), shortcut: "切換".into() });
-        rows.push(Row::Action { id: MENU_MODE, label: mode_label(), shortcut: "切換".into() });
-        rows.push(Row::Levels { base: MENU_SHELLEY, level: s.settings.shelley, hint: rerolls_hint });
-        rows.push(Row::Colors { base: MENU_ACCENT, selected: s.settings.accent });
         rows.push(Row::Separator);
-        rows.push(Row::Action { id: MENU_LOG, label: "對局紀錄".into(), shortcut: "查看".into() });
-        rows.push(Row::Separator);
+        rows.push(Row::Action { id: MENU_HUB, label: "開啟主視窗".into(), shortcut: String::new() });
         rows.push(Row::Action { id: MENU_QUIT, label: "結束".into(), shortcut: "Ctrl+Alt+Q".into() });
         (rows, s.fonts.clone())
     }) else {
@@ -429,8 +446,8 @@ fn log_card(s: &State, by_tray: bool) {
             Row::Text("安裝位置自動找到 UE_game.log。".into()),
             Row::Text("並確認遊戲中已開啟日誌（Esc →".into()),
             Row::Text("「帳號相關」→「開啟日誌」，再重新登入）。".into()),
-            Row::Text("仍找不到時，用記事本在 start-zh.bat".into()),
-            Row::Text("第 5 行 GAMELOG= 後面填入日誌路徑。".into()),
+            Row::Text("仍找不到時，在主視窗「渴癮症助手」頁".into()),
+            Row::Text("按「選擇…」選擇 UE_game.log。".into()),
             Row::Text("在此之前，可按 Ctrl+Alt+X 讀取畫面。".into()),
             Row::Buttons { primary: (MENU_LATER, "確定".into()), secondary: None },
         ]
@@ -492,7 +509,10 @@ fn download_rows(s: &State) -> Vec<Row> {
 fn start_update(s: &mut State) {
     let Some(r) = s.update.clone() else { return };
     if s.updating.is_some() {
-        return super::menu::open(s.hwnd, download_rows(s), s.fonts.clone());
+        if !super::hub::shown() {
+            super::menu::open(s.hwnd, download_rows(s), s.fonts.clone());
+        }
+        return;
     }
     s.updating = Some(0.0);
     note(&format!("downloading v{} from {}", r.version, r.page));
@@ -519,7 +539,9 @@ fn start_update(s: &mut State) {
         });
         waker.wake();
     });
-    super::menu::open(s.hwnd, download_rows(s), s.fonts.clone());
+    if !super::hub::shown() {
+        super::menu::open(s.hwnd, download_rows(s), s.fonts.clone());
+    }
 }
 
 /// A choice from the tray menu.
@@ -561,6 +583,7 @@ unsafe fn command(hwnd: HWND, id: u32) {
             });
         }
         MENU_QUIT => quit(hwnd),
+        MENU_HUB => super::hub::open(None),
         c if (MENU_SHELLEY + 1..=MENU_SHELLEY + 6).contains(&c) => {
             with_state(|s| set_shelley(s, (c - MENU_SHELLEY) as i32));
         }
@@ -581,7 +604,7 @@ fn follow(s: &mut State) {
     let game = find_game_window();
     let front = game.is_some_and(|g| foreground() == g);
     let rect = game.and_then(client_rect);
-    let want = s.settings.shown && front && s.plan.is_some() && rect.is_some();
+    let want = s.running && s.settings.shown && front && s.plan.is_some() && rect.is_some();
     unsafe {
         if !want {
             if s.visible {
@@ -640,4 +663,208 @@ fn draw(s: &State, (x, y, w, h): (i32, i32, i32, i32)) {
     }
     let pm = render(&p, w as u32, h as u32, &s.fonts, crate::draw::accent(s.settings.accent));
     unsafe { put(s.hwnd, x, y, w, h, pm.data()) };
+}
+
+/// The toolbox's main window: everything it shows, as JSON for the page (ui/index.html).
+fn state_json(s: &mut State) -> String {
+    let game = find_game_window();
+    let size = game.and_then(client_rect).map(|(_, _, w, h)| (w, h));
+    let log = match s.game_log {
+        Some(GameLog::On) => "on",
+        Some(GameLog::Off) => "off",
+        Some(GameLog::Missing) => "missing",
+        Some(GameLog::Checking) => "checking",
+        Some(GameLog::NoGame) | None => "nogame",
+    };
+    let script = match crate::zh::mode() {
+        crate::zh::SIMPLIFIED => "sc",
+        crate::zh::TRADITIONAL => "tc",
+        _ if super::sys::windows_simplified() => "sc",
+        _ => "tc",
+    };
+    let stats = match s.stats {
+        Some((st, at)) if at.elapsed() < std::time::Duration::from_secs(30) => st,
+        _ => {
+            let st = super::logview::stats(vorax::bot::mean_goal(), s.settings.stats_since);
+            s.stats = Some((st, std::time::Instant::now()));
+            st
+        }
+    };
+    serde_json::json!({
+        "type": "state",
+        "version": update::current(),
+        "script": script,
+        "update": s.update.as_ref().map(|r| serde_json::json!({ "version": r.version, "notes": r.notes, "page": r.page })),
+        "updating": s.updating,
+        "upToDate": s.up_to_date,
+        "boot": super::sys::starts_with_windows(),
+        "autoGame": s.settings.auto_game,
+        "firstRunDone": s.settings.first_run_done,
+        "vorax": {
+            "running": s.running,
+            "mode": if vorax::bot::mean_goal() { "mean" } else { "safe" },
+            "shelley": s.settings.shelley,
+            "rerolls": crate::pipeline::shelley_rerolls(s.settings.shelley),
+            "shown": s.settings.shown,
+            "showRead": s.show_read,
+            "game": { "open": game.is_some(), "w": size.map(|x| x.0), "h": size.map(|x| x.1), "fullScreen": game.is_some() && super::sys::exclusive_full_screen() },
+            "log": { "state": log, "path": s.log_file.as_ref().map(|p| p.display().to_string()), "manual": s.log_manual },
+            "ocr": match &s.ocr { None => serde_json::Value::Null, Some(None) => serde_json::Value::Bool(false), Some(Some(l)) => serde_json::Value::String(l.clone()) },
+            "last": s.last_read.as_ref().map(|(t, warn, at)| serde_json::json!({ "text": t, "warn": warn, "ago": at.elapsed().as_secs() })),
+            "stats": { "games": stats.0, "rainbow": stats.1, "mean": stats.2 },
+        },
+    })
+    .to_string()
+}
+
+/// Sends the main window the state as it is now (when it's open).
+fn push_state() {
+    if !super::hub::shown() {
+        return;
+    }
+    if let Some(json) = with_state(|s| state_json(s)) {
+        super::hub::post(&json);
+    }
+}
+
+/// The main window's ✕: it's only hidden; the first time, a note by the tray says the tools are still running.
+fn hub_closed() {
+    with_state(|s| {
+        if !s.settings.close_hint_shown {
+            s.settings.close_hint_shown = true;
+            s.settings.save();
+            let rows = vec![
+                Row::Header { title: "火炬工具箱仍在執行".into(), status: "已縮到右下角".into() },
+                Row::Text("點右下角的圖示可再次開啟主視窗。".into()),
+                Row::Text("要完全關閉：在圖示按右鍵 →「結束」。".into()),
+                Row::Buttons { primary: (MENU_LATER, "確定".into()), secondary: None },
+            ];
+            super::menu::notify(s.hwnd, rows, s.fonts.clone());
+        }
+    });
+}
+
+/// What the main window asks for ({"cmd": ...}); every command is answered with the state.
+fn from_hub(text: &str) {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return };
+    let cmd = v["cmd"].as_str().unwrap_or("");
+    match cmd {
+        "ready" | "refresh" => {}
+        "set" => {
+            let value = v["value"].clone();
+            with_state(|s| match v["key"].as_str().unwrap_or("") {
+                "mode" => {
+                    s.stats = None;
+                    let want = value.as_str() == Some("mean");
+                    if want != vorax::bot::mean_goal() {
+                        next_mode(s);
+                    }
+                }
+                "shelley" => {
+                    if let Some(l) = value.as_i64() {
+                        set_shelley(s, (l as i32).clamp(1, 6));
+                    }
+                }
+                "shown" => {
+                    if value.as_bool() != Some(s.settings.shown) {
+                        toggle(s);
+                    }
+                }
+                "showRead" => {
+                    if value.as_bool() != Some(s.show_read) {
+                        toggle_read(s);
+                    }
+                }
+                "script" => {
+                    crate::zh::set_mode(if value.as_str() == Some("sc") { crate::zh::SIMPLIFIED } else { crate::zh::TRADITIONAL });
+                    s.settings.script = crate::zh::mode();
+                    s.settings.save();
+                    s.placed = None;
+                    follow(s);
+                }
+                "boot" => super::sys::set_start_with_windows(value.as_bool().unwrap_or(false)),
+                "autoGame" => {
+                    s.settings.auto_game = value.as_bool().unwrap_or(true);
+                    s.settings.save();
+                }
+                _ => {}
+            });
+        }
+        "vorax" => {
+            let on = v["on"].as_bool().unwrap_or(true);
+            with_state(|s| {
+                s.running = on;
+                let _ = s.tx.send(ToWorker::Pause(!on));
+                s.placed = None;
+                follow(s);
+            });
+        }
+        "snap" => {
+            with_state(|s| s.tx.send(ToWorker::Snap).ok());
+        }
+        "chooseLog" => {
+            // the dialog runs its own message loop: never inside the state's borrow
+            if let Some(p) = super::sys::choose_log(super::hub::hwnd()) {
+                with_state(|s| {
+                    note(&format!("the game's log chosen by hand: {}", p.display()));
+                    s.settings.log_path = Some(p.clone());
+                    s.settings.save();
+                    s.game_log = None;
+                    let _ = s.tx.send(ToWorker::LogPath(Some(p)));
+                });
+            }
+        }
+        "autoLog" => {
+            with_state(|s| {
+                s.settings.log_path = None;
+                s.settings.save();
+                s.game_log = None;
+                let _ = s.tx.send(ToWorker::LogPath(None));
+            });
+        }
+        "runs" => {
+            with_state(|s| super::logview::open(s.fonts.clone()));
+        }
+        "resetStats" => {
+            with_state(|s| {
+                s.stats = None;
+                s.settings.stats_since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
+                s.settings.save();
+                note("statistics reset from the toolbox");
+            });
+        }
+        "checkUpdate" => {
+            let Some((tx, waker)) = with_state(|s| (s.to_self.clone(), Waker(Hwnd::of(s.hwnd)))) else { return };
+            std::thread::spawn(move || {
+                unsafe {
+                    let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED);
+                }
+                let _ = tx.send(match update::check() {
+                    Ok(Some(r)) => ToUi::Update(r),
+                    _ => ToUi::UpToDate,
+                });
+                waker.wake();
+            });
+        }
+        "update" => {
+            with_state(start_update);
+        }
+        "firstRunDone" => {
+            with_state(|s| {
+                s.settings.first_run_done = true;
+                s.settings.save();
+            });
+        }
+        "open" => super::hub::open_url(v["url"].as_str().unwrap_or("")),
+        _ => note(&format!("main window: unknown command {cmd}")),
+    }
+    push_state();
+}
+
+/// Opens the main window from anywhere (posted, so it's never made inside the state's borrow); `guide`: on the
+/// first-use steps.
+pub fn open_hub_later(guide: bool) {
+    with_state(|s| unsafe {
+        let _ = PostMessageW(s.hwnd, WM_OPEN_HUB, WPARAM(guide as usize), LPARAM(0));
+    });
 }

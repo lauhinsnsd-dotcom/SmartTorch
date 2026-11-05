@@ -57,10 +57,12 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
         match Ocr::with_language(opts.ocr_lang.as_deref()) {
             Ok(o) => {
                 note(&format!("card titles read with Windows OCR ({}){}", o.language, if o.script() == vorax_scan::titles::Script::Han { ", matched to the cards' Chinese names" } else { "" }));
+                send(ToUi::Ocr(Some(o.language.clone())));
                 Some(o)
             }
             Err(e) => {
                 note(&format!("no Windows OCR ({e}): cards read by their pictures"));
+                send(ToUi::Ocr(None));
                 None
             }
         }
@@ -70,6 +72,9 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
     if let Some(dir) = &opts.frames {
         note(&format!("saving every picture read to {}", dir.display()));
     }
+    let mut opts = opts;
+    // the toolbox's Stop: nothing read until Start
+    let mut paused = false;
     let mut pipe = Pipeline::new(opts.shelley);
     pipe.script = ocr.as_ref().map_or(vorax_scan::titles::Script::Latin, |o| o.script());
     let mut follower: Option<Follower> = None;
@@ -104,7 +109,26 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
                         send(ToUi::Show(plan, w, h));
                     }
                 }
+                // the toolbox: a log chosen by hand (None: found by itself again)
+                ToWorker::LogPath(p) => {
+                    opts.log = p;
+                    follower = None;
+                    game_line_at = None;
+                    game_log = None;
+                    looked_for_log = Instant::now() - Duration::from_secs(60);
+                }
+                ToWorker::Pause(on) => {
+                    paused = on;
+                    if on {
+                        send(ToUi::Clear);
+                    }
+                    note(if on { "stopped from the toolbox: nothing is read until Start" } else { "started from the toolbox" });
+                }
             }
+        }
+        if paused {
+            std::thread::sleep(Duration::from_millis(100));
+            continue;
         }
         if follower.is_none() && looked_for_log.elapsed() > Duration::from_secs(10) {
             looked_for_log = Instant::now();
@@ -112,13 +136,17 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
             match found {
                 Some(p) => {
                     note(&format!("following the game's log: {}", p.display()));
+                    send(ToUi::LogFile(Some(p.clone()), opts.log.is_some()));
                     // a game already open with its log on: known at once, not half a minute later
                     if let Some(age) = last_game_line_age(&p) {
                         game_line_at = Instant::now().checked_sub(age);
                     }
                     follower = Some(Follower::new(p));
                 }
-                None => note("UE_game.log not found (start the game, or pass --log <path>)"),
+                None => {
+                    note("UE_game.log not found (start the game, or pass --log <path>)");
+                    send(ToUi::LogFile(None, false));
+                }
             }
         }
         if last_poll.elapsed() >= Duration::from_millis(250) {
@@ -280,6 +308,7 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
     };
     match outcome {
         Outcome::Advice { reading, advice, plan, read_ms } => {
+            send(ToUi::Read(summary(&reading), missed));
             let mv = plan.pill.as_ref().map_or("(nothing to advise)".to_string(), |p| format!("{} · {}", p.main, p.sub));
             note(&format!(
                 "{} {}x{}: picture {grabbed} ms, read {read_ms:.0} ms, advice {} ms → {mv}; board {}",
@@ -315,4 +344,24 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
         }
     }
     (animating, missed)
+}
+
+/// The toolbox's "last read" line: the screen and round, and what wasn't made out ("藥劑回合 5 · 第 2 張卡未讀到").
+fn summary(reading: &vorax_scan::reading::Reading) -> String {
+    use vorax::advisor::ScreenPhase;
+    let st = &reading.state;
+    let round = st.round.unwrap_or(0);
+    let screen = match st.phase {
+        ScreenPhase::Potion => format!("藥劑回合 {round}"),
+        ScreenPhase::Instrument => "選擇手術用具".to_string(),
+        ScreenPhase::Protocol => format!("手術方案回合 {round}"),
+    };
+    let m = crate::draw::not_read(reading);
+    let mut missed: Vec<String> = m.cards.iter().map(|j| format!("第 {} 張卡", j + 1)).collect();
+    missed.extend(m.tanks.iter().map(|i| format!("第 {} 格", i + 1)));
+    if missed.is_empty() {
+        format!("{screen} · 全部讀到")
+    } else {
+        format!("{screen} · {}未讀到", missed.join("、"))
+    }
 }

@@ -228,6 +228,25 @@ fn summary(runs: &[Run]) -> Vec<String> {
     out
 }
 
+/// The toolbox's numbers for one mode: finished runs, those that reached 840k, and their mean score in 10,000s,
+/// from the debug log (and the one before it), counting runs from `since` (log time; 0: all).
+pub fn stats(aggressive: bool, since: f64) -> (usize, usize, f64) {
+    let dir = super::sys::data_dir();
+    let mut text = std::fs::read_to_string(dir.join("overlay.log.old")).unwrap_or_default();
+    text.push_str(&std::fs::read_to_string(dir.join("overlay.log")).unwrap_or_default());
+    stats_of(&text, aggressive, since)
+}
+
+fn stats_of(text: &str, aggressive: bool, since: f64) -> (usize, usize, f64) {
+    let mode = if aggressive { Mode::Aggressive } else { Mode::Safe };
+    let runs = parse(text);
+    let done: Vec<&Run> = runs.iter().filter(|r| r.mode == mode && r.finished() && r.at >= since).collect();
+    let n = done.len();
+    let won = done.iter().filter(|r| r.last().score >= 840_000).count();
+    let mean = if n == 0 { 0.0 } else { done.iter().map(|r| r.last().score as f64).sum::<f64>() / n as f64 / 10_000.0 };
+    (n, won, mean)
+}
+
 /// Local date and time of a log time (seconds since 1970), and the day as a number for "today".
 fn local(at: f64) -> (String, i64) {
     let ft = (at * 1e7) as u64 + 116_444_736_000_000_000;
@@ -900,7 +919,7 @@ mod protocol_round_tests {
 
 #[cfg(test)]
 mod summary_tests {
-    use super::{parse, summary, Mode};
+    use super::{parse, stats_of, summary, Mode};
 
     fn board(t: u32, round: u32, phase: &str, pct: u32, score: (u32, u32)) -> String {
         let m = format!(r#"{{"archetype":"agito","rarity":"normal","activity":{},"quantity":{}}}"#, score.0, score.1);
@@ -928,6 +947,10 @@ mod summary_tests {
             board(13, 5, "potion", 65, (100, 100)),
         ]
         .join("\n");
+        // the toolbox's numbers: each mode's finished runs, from a reset on
+        assert_eq!(stats_of(&log, false, 0.0), (1, 0, 45.0));
+        assert_eq!(stats_of(&log, true, 0.0), (1, 1, 100.0));
+        assert_eq!(stats_of(&log, true, 9.5), (0, 0, 0.0));
         let runs = parse(&log);
         assert_eq!(runs.iter().map(|r| r.mode).collect::<Vec<_>>(), vec![Mode::Aggressive, Mode::Aggressive, Mode::Safe, Mode::Unknown]);
         assert_eq!(
