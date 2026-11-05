@@ -985,7 +985,7 @@ fn from_hub(text: &str) {
                 });
             }
         }
-        // 流派碼: the page keeps the list and sends all of it after each change
+        // 流派碼: the page keeps the list and sends all of it after each change (it copies a code itself)
         "codesGet" => {
             let list = super::sys::load_codes();
             super::hub::post(&serde_json::json!({ "type": "codes", "list": list }).to_string());
@@ -994,15 +994,6 @@ fn from_hub(text: &str) {
         "codesSave" => {
             let list: Vec<super::sys::Code> = serde_json::from_value(v["list"].clone()).unwrap_or_default();
             super::sys::save_codes(&list);
-            return;
-        }
-        "copy" => {
-            let text = v["text"].as_str().unwrap_or("");
-            let ok = super::hub::hwnd().is_some_and(|h| super::sys::copy_text(h.get(), text));
-            if !ok {
-                note("the code wasn't put on the clipboard");
-            }
-            super::hub::post(&serde_json::json!({ "type": "copied", "ok": ok, "id": v["id"] }).to_string());
             return;
         }
         "tartarusCheck" => {

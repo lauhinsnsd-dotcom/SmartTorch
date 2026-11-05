@@ -400,6 +400,34 @@ function codes() {
   ${CODES && CODES.length > 1 ? `<div class="note">${L("按住左邊的 ⋮⋮ 拖動可以排序。", "Drag ⋮⋮ on the left to reorder.")}</div>` : ""}`;
 }
 
+// the page puts the code on the clipboard itself (the button's click lets it), as any web page's Copy does
+function copyText(text) {
+  const t = document.createElement("textarea");
+  t.value = text;
+  t.setAttribute("readonly", "");
+  t.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;user-select:text";
+  document.body.appendChild(t);
+  t.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (_) { ok = false; }
+  t.remove();
+  if (!ok && navigator.clipboard) { navigator.clipboard.writeText(text).then(() => copied(-1, true)).catch(() => {}); }
+  return ok;
+}
+let copyTimer = null;
+// the Copy button says so for a second
+function copied(i, ok) {
+  const tc = (x) => (S && S.lang === "sc" ? toSc(x) : x);
+  const b = i >= 0 ? document.getElementById("cp" + i) : document.querySelector("[data-copying]");
+  if (!b) return;
+  document.querySelectorAll("[data-copying]").forEach((x) => x.removeAttribute("data-copying"));
+  if (!ok) b.setAttribute("data-copying", "");
+  b.textContent = tc(ok ? L("已複製 ✓", "Copied ✓") : L("複製失敗", "Not copied"));
+  b.classList.toggle("ok", ok);
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => { b.textContent = tc(L("複製", "Copy")); b.classList.remove("ok"); }, 1000);
+}
+
 function saveCodes() { send({ cmd: "codesSave", list: CODES }); }
 // the list drawn again (after a change), the form's typing kept
 function drawCodes() { drawn = ""; render(); }
@@ -489,7 +517,7 @@ function codeAction(act, i) {
     drawCodes();
     document.getElementById("cn").focus();
   } else if (act === "copy") {
-    send({ cmd: "copy", text: CODES[i].code, id: i });
+    copied(i, copyText(CODES[i].code));
   } else if (act === "edit") {
     editing = i; drawCodes();
     const e = document.getElementById("en" + i); if (e) e.focus();
@@ -558,15 +586,7 @@ window.chrome && window.chrome.webview && window.chrome.webview.addEventListener
   if (!m) return;
   if (m.type === "state") { S = m; render(); }
   else if (m.type === "codes") { CODES = Array.isArray(m.list) ? m.list : []; if (page === "codes") drawCodes(); }
-  else if (m.type === "copied") {
-    const b = document.getElementById("cp" + m.id);
-    if (b) {
-      b.textContent = m.ok ? L("已複製 ✓", "Copied ✓") : L("複製失敗", "Not copied");
-      if (S.lang === "sc") b.textContent = toSc(b.textContent);
-      b.classList.toggle("ok", !!m.ok);
-      setTimeout(() => { b.textContent = L("複製", "Copy"); if (S.lang === "sc") b.textContent = toSc(b.textContent); b.classList.remove("ok"); }, 1000);
-    }
-  }
+
   else if (m.type === "tab") {
     const [p, t] = String(m.tab).split(":");
     page = p; if (t) tab = t; render();
