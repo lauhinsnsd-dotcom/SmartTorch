@@ -3,6 +3,15 @@
 每個版本更新了什麼。有新版本時，SmartTorch 的更新提示也會顯示該版本的內容。
 What each version changed. When a new version is out, SmartTorch's update note shows its part.
 
+## v1.0.2
+
+**更新提示 · Updates**
+- 有新版本時，主視窗左下角（語言切換下方）會顯示「立即更新」與「更新內容」，在任何一頁都看得到。 A new version shows at the bottom left of the main window (under the language switch), with Update now and What's new, on every page.
+- SmartTorch 開著時每 6 小時自動檢查一次新版本（以前只在開啟時檢查）。 While it runs, SmartTorch looks for a new version every 6 hours (before, only at its start).
+
+**版本紀錄 · Changelog**
+- 沒有新版本時，左下角顯示目前版本，點一下即可在「設定 › 版本紀錄」查看每個版本更新了什麼。 With no new version, the bottom left shows this version: click it to see what each version changed, in Settings › Changelog.
+
 ## v1.0.1
 
 **流派碼 · Build codes**
