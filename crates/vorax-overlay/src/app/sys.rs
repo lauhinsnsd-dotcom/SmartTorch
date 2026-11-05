@@ -266,6 +266,10 @@ pub struct Settings {
     /// the toolbox: 囚獸助手's program chosen by hand (else the toolbox's own install)
     #[serde(default)]
     pub tartarus_exe: Option<PathBuf>,
+    /// the toolbox: 囚獸助手's statistics (runs, Chromatic) when they were reset here: shown from then on (its own
+    /// file is never changed)
+    #[serde(default)]
+    pub tartarus_base: Option<(u64, u64)>,
 }
 
 fn yes() -> bool {
@@ -274,7 +278,7 @@ fn yes() -> bool {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, stats_since: 0.0, first_run_done: false, close_hint_shown: false, tartarus_exe: None }
+        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, stats_since: 0.0, first_run_done: false, close_hint_shown: false, tartarus_exe: None, tartarus_base: None }
     }
 }
 

@@ -231,17 +231,14 @@ function tartarus() {
   const t = S.tartarus;
   const head = (right) => `<div class="head"><div><h1>囚獸助手</h1><div class="sub">塔爾塔洛斯監獄：框出最佳一步與預計寶箱</div></div>${right || ""}</div>`;
   const err = t.error ? `<div class="tip" style="color:var(--text)">${dot("r")} ${esc(t.error)}</div>` : "";
-  if (t.busy != null) {
-    const pct = Math.round(t.busy * 100);
-    return head() + `<section class="card"><div style="font-size:18px;font-weight:700">${t.installed ? "正在更新…" : "正在下載安裝…"} ${pct}%</div>
-      <div class="bar"><i style="width:${pct}%"></i></div><div class="note">從 glcoder 的 GitHub 下載，完成後會自動啟動</div></section>`;
-  }
   if (!t.installed) {
     return head() + err + `<section class="card" aria-label="安裝囚獸助手">
-      <div style="font-size:18px;font-weight:700">尚未安裝</div>
-      <p class="para">囚獸助手由 glcoder 開發（Tartarus Solver，MIT 授權）。工具箱會從它的 GitHub 下載最新版（約 36–93 MB，視電腦是否已有 .NET 9）。</p>
-      <div class="row" style="gap:8px"><button class="btn gold big" data-cmd="tartarusInstall">安裝</button>
-        <button class="btn big" data-cmd="tartarusChoose">已安裝？選擇位置</button></div></section>`;
+      <div style="font-size:18px;font-weight:700">尚未找到囚獸助手</div>
+      <p class="para">囚獸助手是 glcoder 開發的 Tartarus Solver（MIT 授權），請到它的 GitHub 下載：</p>
+      <div class="step"><div class="num">1</div><div><p style="margin:0">按「前往下載頁」，下載 <b>TartarusSolver-版本-full.zip</b>（電腦已裝 .NET 9 可選較小的另一個）。</p></div></div>
+      <div class="step"><div class="num">2</div><div><p style="margin:0">解壓到任何資料夾，開啟一次裡面的 TartarusSolver.exe，工具箱會自動找到它；或按「選擇位置」指定。</p></div></div>
+      <div class="row" style="gap:8px"><button class="btn gold big" data-cmd="tartarusDownload">前往下載頁</button>
+        <button class="btn big" data-cmd="tartarusChoose">選擇位置</button></div></section>`;
   }
   const on = t.running || t.want;
   const st = t.stats;
@@ -255,6 +252,7 @@ function tartarus() {
     <div class="stat"><b class="gold">${st ? st.chromatic : "—"}</b><span>彩色囚犯</span></div>
     <div class="stat"><b>${per}</b><span>每局平均</span></div>
   </div>
+  <div class="row" style="justify-content:flex-end"><button class="btn" data-confirm="tartarusReset">重設統計</button></div>
   <section class="card" aria-label="囚獸助手狀態">
     <div class="grid2">
       <div class="k">版本</div><div>${ver}${upd}</div>
@@ -262,10 +260,11 @@ function tartarus() {
     </div>
     <div class="row" style="gap:8px">
       <button class="btn big ${t.shown ? "goldline" : ""}" data-cmd="tartarusShow" data-on="${!t.shown}" aria-pressed="${t.shown}" ${t.running ? "" : "disabled"}>${t.shown ? "收起設定" : "設定"}</button>
-      ${t.newer ? `<button class="btn gold big" data-cmd="tartarusInstall">更新到 v${esc(t.latest)}</button>` : ""}
+      ${t.newer && t.running ? `<button class="btn gold big" data-cmd="tartarusShow" data-on="true">更新到 v${esc(t.latest)}</button>` : ""}
       <button class="btn small" data-cmd="tartarusChoose" style="margin-left:auto">更改位置…</button>
     </div>
     ${t.shown ? `<div class="note" style="color:var(--gold2)">已打開囚獸助手的設定視窗，再按一次「收起設定」收起。直接按它的 ✕ 會關閉它（工具箱會在幾秒後自動重新開啟）。</div>` : ""}
+    ${t.newer && t.shown ? `<div class="note" style="color:var(--gold2)">在它的視窗右下方按「Update to ${esc(t.latest)}」，它會自己更新並重新開啟。</div>` : ""}
     ${t.running ? "" : `<div class="note">啟動後才能打開它的設定視窗。</div>`}
   </section>`;
 }
@@ -327,7 +326,7 @@ function about() {
     <div class="sep" style="display:flex;flex-direction:column;gap:12px;font-size:14px">
       <div class="note" style="font-size:14px">感謝以下作者（皆為 MIT 授權）</div>
       <div><b>渴癮症助手</b>：計算與讀取基於 DinoRaos 的 <a href="#" data-url="https://github.com/DinoRaos/vorax-solver-rs">vorax-solver-rs</a>；其前身為 tidewarden 的 Vorax Solver（2026-10-22 版）與 Moebing 的 <a href="#" data-url="https://github.com/Moebing/Torchlight-Infinite-SS11-Vorax-simulator">渴癮症模擬器</a>。中文支援與介面由 FakerPlay 製作。</div>
-      <div><b>囚獸助手</b>：glcoder 的 <a href="#" data-url="https://github.com/glcoder/TartarusSolver">Tartarus Solver</a>，原樣使用，由工具箱下載與啟動。</div>
+      <div><b>囚獸助手</b>：glcoder 的 <a href="#" data-url="https://github.com/glcoder/TartarusSolver">Tartarus Solver</a>，原樣使用：由玩家自行下載，工具箱負責啟動與顯示。</div>
       <div class="note" style="font-size:14px">字型：Noto Sans TC／SC（SIL Open Font License 1.1）。授權全文見工具箱資料夾內的 LICENSE.txt 與 FONT-LICENSE.txt。</div>
     </div>
   </section>`;
@@ -374,7 +373,7 @@ document.addEventListener("click", (e) => {
   if (t.dataset.goto) { page = "settings"; tab = t.dataset.goto; render(); document.getElementById("main").scrollTop = 0; return; }
   if (t.dataset.url) { send({ cmd: "open", url: t.dataset.url }); return; }
   if (t.dataset.confirm) {
-    const words = { resetStats: "重設統計？之前的局數不再計入（對局紀錄仍保留）。" }[t.dataset.confirm];
+    const words = { resetStats: "重設統計？之前的局數不再計入（對局紀錄仍保留）。", tartarusReset: "重設囚獸助手的統計？工具箱之後只計算從現在開始的局數（囚獸助手自己的紀錄不會改動）。" }[t.dataset.confirm];
     if (confirm(S.script === "sc" ? toSc(words) : words)) send({ cmd: t.dataset.confirm });
     return;
   }

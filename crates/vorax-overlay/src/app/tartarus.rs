@@ -1,7 +1,8 @@
 //! The toolbox's 囚獸助手: glcoder's Tartarus Solver (MIT, github.com/glcoder/TartarusSolver), used as it is. The
-//! toolbox downloads it from its releases, starts it, keeps its window hidden (it has no tray icon of its own, and
-//! its window's ✕ quits it) until 設定 shows it, starts it again if it closes while it should run, and reads its
-//! statistics. Its own code is never changed.
+//! player downloads it from its releases page; the toolbox finds it (chosen, or as it runs), starts it, keeps its
+//! window hidden (it has no tray icon of its own, and its window's ✕ quits it) until 設定 shows it, starts it again
+//! if it closes while it should run, and reads its statistics. Its own code and files are never changed: it
+//! updates itself (its window's Update button).
 
 use super::sys::{note, Hwnd};
 use std::path::{Path, PathBuf};
@@ -20,21 +21,20 @@ const STARTING: Duration = Duration::from_secs(30);
 /// Closed while it should run: started again after this long (its own update restarts it within it).
 const GONE: Duration = Duration::from_secs(8);
 
-/// Where the toolbox installs it: %LOCALAPPDATA%\FireToolbox\TartarusSolver.
-pub fn home() -> PathBuf {
-    let base = std::env::var("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
-    base.join("FireToolbox")
-}
-
 /// Its own settings and statistics: %LOCALAPPDATA%\TartarusSolver.
 fn its_folder() -> PathBuf {
     let base = std::env::var("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
     base.join("TartarusSolver")
 }
 
-/// The installed program: the one chosen, else the toolbox's own install.
+/// The installed program: the one chosen (or found running).
 pub fn installed(chosen: Option<&Path>) -> Option<PathBuf> {
-    chosen.filter(|p| p.is_file()).map(Path::to_path_buf).or_else(|| Some(home().join("TartarusSolver").join(EXE)).filter(|p| p.is_file()))
+    chosen.filter(|p| p.is_file()).map(Path::to_path_buf)
+}
+
+/// The program of the one running now, if any: how the toolbox finds it without being told.
+pub fn running_exe() -> Option<PathBuf> {
+    window().and_then(|(_, pid)| exe_of(pid)).map(PathBuf::from)
 }
 
 /// Its statistics (runs, Chromatic Inmates), from its statistic.json.
@@ -75,118 +75,20 @@ pub fn newer(a: &str, b: &str) -> bool {
     numbers(a) > numbers(b)
 }
 
-/// .NET 9's desktop runtime is installed (the smaller download needs it; else the "-full" one, .NET included).
-fn has_dotnet9() -> bool {
-    let pf = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".into());
-    let dir = PathBuf::from(pf).join("dotnet").join("shared").join("Microsoft.WindowsDesktop.App");
-    std::fs::read_dir(dir).map(|r| r.filter_map(|e| e.ok()).any(|e| e.file_name().to_string_lossy().starts_with("9."))).unwrap_or(false)
-}
 
-/// Its latest release: version, and the zip for this PC (url, size, SHA-256).
-#[derive(Clone, Debug)]
-pub struct Latest {
-    pub version: String,
-    url: String,
-    size: u64,
-    sha256: String,
-}
+/// Its releases page, to download it from.
+pub const PAGE: &str = "https://github.com/glcoder/TartarusSolver/releases/latest";
 
-pub fn latest() -> Result<Latest, String> {
+/// Its latest release's version ("0.7.44").
+pub fn latest() -> Result<String, String> {
     let v = super::update::get_json(&format!("https://api.github.com/repos/{REPO}/releases/latest"))?;
     let tag = v["tag_name"].as_str().ok_or("GitHub: no release")?;
-    let version = tag.trim_start_matches('v').to_string();
-    let full = !has_dotnet9();
-    let want = format!("TartarusSolver-{version}{}.zip", if full { "-full" } else { "" });
-    let asset = v["assets"].as_array().and_then(|a| a.iter().find(|x| x["name"] == want.as_str())).ok_or(format!("{tag} has no {want}"))?;
-    let sha256 = asset["digest"].as_str().and_then(|d| d.strip_prefix("sha256:")).ok_or(format!("{want}: GitHub gives no SHA-256"))?;
-    Ok(Latest { version, url: asset["browser_download_url"].as_str().ok_or("no download link")?.to_string(), size: asset["size"].as_u64().unwrap_or(0), sha256: sha256.to_ascii_lowercase() })
+    Ok(tag.trim_start_matches('v').to_string())
 }
 
-/// Copies every file under `from` into `to` (files `to` has that `from` doesn't stay), as its own updater does.
-fn copy_over(from: &Path, to: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(to)?;
-    for e in std::fs::read_dir(from)? {
-        let e = e?;
-        let dest = to.join(e.file_name());
-        if e.file_type()?.is_dir() {
-            copy_over(&e.path(), &dest)?;
-        } else {
-            // an antivirus may hold a fresh file a moment
-            let mut tries = 0;
-            loop {
-                match std::fs::copy(e.path(), &dest) {
-                    Ok(_) => break,
-                    Err(err) if tries < 20 => {
-                        tries += 1;
-                        let _ = err;
-                        std::thread::sleep(Duration::from_millis(500));
-                    }
-                    Err(err) => return Err(err),
-                }
-            }
-        }
-    }
-    Ok(())
-}
 
-fn find_exe(dir: &Path) -> Option<PathBuf> {
-    for e in std::fs::read_dir(dir).ok()?.filter_map(|e| e.ok()) {
-        let p = e.path();
-        if p.is_dir() {
-            if let Some(x) = find_exe(&p) {
-                return Some(x);
-            }
-        } else if p.file_name().is_some_and(|n| n.eq_ignore_ascii_case(EXE)) {
-            return Some(p);
-        }
-    }
-    None
-}
 
-/// Downloads the latest release and puts it in `target` (a folder; made if new). Its interface language set to
-/// the toolbox's words on a first install (`ui`: "zhTw" or "zh"). The installed program.
-pub fn install(target: &Path, ui: Option<&str>, progress: impl Fn(f32) + Send + Sync + 'static) -> Result<PathBuf, String> {
-    let l = latest()?;
-    note(&format!("Tartarus Solver: downloading v{} ({} bytes)", l.version, l.size));
-    let bytes = super::update::download(&l.url, l.size, &l.sha256, progress)?;
-    let work = home().join("download");
-    let _ = std::fs::remove_dir_all(&work);
-    std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
-    let zip = work.join("TartarusSolver.zip");
-    std::fs::write(&zip, &bytes).map_err(|e| format!("{}: {e}", zip.display()))?;
-    drop(bytes);
-    let unpacked = work.join("unpacked");
-    std::fs::create_dir_all(&unpacked).map_err(|e| e.to_string())?;
-    // Windows' own tar (Windows 10 1803 and later) unpacks zips
-    use std::os::windows::process::CommandExt;
-    let out = std::process::Command::new("tar").arg("-xf").arg(&zip).arg("-C").arg(&unpacked).creation_flags(0x0800_0000).output().map_err(|e| format!("tar: {e}"))?;
-    if !out.status.success() {
-        return Err(format!("unpacking: {}", String::from_utf8_lossy(&out.stderr).trim()));
-    }
-    let exe = find_exe(&unpacked).ok_or(format!("no {EXE} in the zip"))?;
-    let from = exe.parent().unwrap().to_path_buf();
-    copy_over(&from, target).map_err(|e| format!("copying into {}: {e}", target.display()))?;
-    let _ = std::fs::remove_dir_all(&work);
-    if let Some(lang) = ui {
-        set_language(lang);
-    }
-    note(&format!("Tartarus Solver v{} installed in {}", l.version, target.display()));
-    Ok(target.join(EXE))
-}
 
-/// Its interface in the toolbox's words, on a first install: written into its settings before it first starts
-/// (left alone when the player has chosen a language there).
-fn set_language(lang: &str) {
-    let dir = its_folder();
-    let path = dir.join("settings.json");
-    let mut v: serde_json::Value = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(t.trim_start_matches('\u{feff}')).ok()).unwrap_or_else(|| serde_json::json!({}));
-    let now = v["UiLanguage"].as_str().unwrap_or("auto");
-    if now.eq_ignore_ascii_case("auto") {
-        v["UiLanguage"] = serde_json::Value::String(lang.to_string());
-        let _ = std::fs::create_dir_all(&dir);
-        let _ = std::fs::write(&path, serde_json::to_string_pretty(&v).unwrap_or_default());
-    }
-}
 
 fn exe_of(pid: u32) -> Option<String> {
     unsafe {
@@ -247,8 +149,7 @@ pub struct Tart {
     gone_since: Option<Instant>,
     stop_at: Option<Instant>,
     starts: Vec<Instant>,
-    /// an install or update under way (0-1), and the last one's failure
-    pub busy: Option<f32>,
+    /// why it isn't running (it kept closing, or didn't start)
     pub error: Option<String>,
 }
 
@@ -331,9 +232,6 @@ impl Tart {
     /// `exe`: the installed program. Whether anything changed that the main window shows.
     pub fn tick(&mut self, exe: Option<&Path>) -> bool {
         let before = (self.running, self.shown);
-        if self.busy.is_some() {
-            return false;
-        }
         match window() {
             Some((h, pid)) => {
                 self.running = true;

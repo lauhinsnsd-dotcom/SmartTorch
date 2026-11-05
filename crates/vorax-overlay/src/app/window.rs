@@ -49,10 +49,8 @@ pub enum ToUi {
     Read(String, bool),
     /// the toolbox: Ctrl+Alt+B set the last picture aside (how many are now), or why not
     Marked(Result<usize, String>),
-    /// the toolbox: 囚獸助手's latest release (its version), its install's progress (0-1) and outcome
+    /// the toolbox: 囚獸助手's latest release (its version)
     TartLatest(String),
-    TartProgress(f32),
-    TartDone(Result<PathBuf, String>),
 }
 
 /// The game's log as the worker sees it.
@@ -307,22 +305,6 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                             }
                         }
                         ToUi::TartLatest(v) => s.tart_latest = Some(v),
-                        ToUi::TartProgress(p) => s.tart.busy = Some(p),
-                        ToUi::TartDone(r) => {
-                            s.tart.busy = None;
-                            s.tart_version = None;
-                            match r {
-                                Ok(exe) => {
-                                    note(&format!("囚獸助手 ready: {}", exe.display()));
-                                    s.tart.error = None;
-                                    s.tart.start(&exe);
-                                }
-                                Err(e) => {
-                                    note(&format!("Tartarus Solver not installed: {e}"));
-                                    s.tart.error = Some(format!("安裝失敗：{e}"));
-                                }
-                            }
-                        }
                         ToUi::Read(text, warn) => {
                             // a run may have just ended: count again
                             if text.starts_with("手術方案") {
@@ -951,8 +933,13 @@ fn from_hub(text: &str) {
             let on = v["on"].as_bool().unwrap_or(true);
             with_state(|s| s.tart.show(on));
         }
-        "tartarusInstall" => {
-            with_state(install_tartarus);
+        "tartarusDownload" => super::hub::open_url(super::tartarus::PAGE),
+        "tartarusReset" => {
+            with_state(|s| {
+                s.settings.tartarus_base = super::tartarus::stats();
+                s.settings.save();
+                note("Tartarus Solver's statistics reset in the toolbox");
+            });
         }
         "tartarusChoose" => {
             if let Some(p) = super::sys::choose_tartarus(super::hub::hwnd()) {
@@ -1009,6 +996,15 @@ fn tart_exe(s: &State) -> Option<PathBuf> {
 /// Once a second: 囚獸助手 looked after, and the tools started as the game opens and stopped as it closes (when
 /// that's on). Whether the main window should be told.
 fn tick(s: &mut State) -> bool {
+    // found as it runs, when not chosen yet (or moved): remembered
+    if tart_exe(s).is_none() {
+        if let Some(found) = super::tartarus::running_exe() {
+            note(&format!("Tartarus Solver found running: {}", found.display()));
+            s.settings.tartarus_exe = Some(found);
+            s.settings.save();
+            s.tart_version = None;
+        }
+    }
     let exe = tart_exe(s);
     let mut changed = s.tart.tick(exe.as_deref());
     let open = find_game_window().is_some();
@@ -1049,8 +1045,8 @@ fn check_tartarus(s: &State) {
             let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED);
         }
         match super::tartarus::latest() {
-            Ok(l) => {
-                let _ = tx.send(ToUi::TartLatest(l.version));
+            Ok(v) => {
+                let _ = tx.send(ToUi::TartLatest(v));
                 waker.wake();
             }
             Err(e) => note(&format!("Tartarus Solver's latest release: {e}")),
@@ -1058,47 +1054,6 @@ fn check_tartarus(s: &State) {
     });
 }
 
-/// Installs 囚獸助手 (or updates it in place) on its own thread: stopped first, started again when done.
-fn install_tartarus(s: &mut State) {
-    if s.tart.busy.is_some() {
-        return;
-    }
-    let existing = tart_exe(s);
-    let first = existing.is_none();
-    let target = existing.as_ref().and_then(|e| e.parent().map(|p| p.to_path_buf())).unwrap_or_else(|| super::tartarus::home().join("TartarusSolver"));
-    if s.tart.running {
-        s.tart.stop();
-    }
-    s.tart.busy = Some(0.0);
-    s.tart.error = None;
-    let ui = first.then_some(if crate::zh::simplified() { "zh" } else { "zhTw" });
-    let (tx, waker) = (s.to_self.clone(), Waker(Hwnd::of(s.hwnd)));
-    std::thread::spawn(move || {
-        unsafe {
-            let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED);
-        }
-        // a running one closing first (it was asked to): its files can't be replaced while it runs
-        for _ in 0..20 {
-            if !target.join("TartarusSolver.exe").is_file() || std::fs::OpenOptions::new().write(true).open(target.join("TartarusSolver.exe")).is_ok() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(500));
-        }
-        let progress_tx = std::sync::Mutex::new(tx.clone());
-        let last = std::sync::atomic::AtomicU32::new(0);
-        let out = super::tartarus::install(&target, ui, move |p| {
-            let pct = (p * 100.0) as u32;
-            if last.swap(pct, std::sync::atomic::Ordering::Relaxed) != pct {
-                if let Ok(t) = progress_tx.lock() {
-                    let _ = t.send(ToUi::TartProgress(p));
-                }
-                waker.wake();
-            }
-        });
-        let _ = tx.send(ToUi::TartDone(out));
-        waker.wake();
-    });
-}
 
 /// 囚獸助手 as the main window shows it.
 fn tartarus_json(s: &mut State) -> serde_json::Value {
@@ -1109,7 +1064,11 @@ fn tartarus_json(s: &mut State) -> serde_json::Value {
         }
     }
     let version = s.tart_version.as_ref().and_then(|(_, v)| v.clone());
-    let stats = super::tartarus::stats();
+    // counted from the toolbox's reset (a reset in its own window, below that, starts over)
+    let stats = super::tartarus::stats().map(|(r, c)| match s.settings.tartarus_base {
+        Some((br, bc)) if r >= br && c >= bc => (r - br, c - bc),
+        _ => (r, c),
+    });
     let newer = match (&s.tart_latest, &version) {
         (Some(l), Some(v)) => super::tartarus::newer(l, v),
         _ => false,
@@ -1123,7 +1082,6 @@ fn tartarus_json(s: &mut State) -> serde_json::Value {
         "running": s.tart.running,
         "want": s.tart.want,
         "shown": s.tart.shown,
-        "busy": s.tart.busy,
         "error": s.tart.error,
         "stats": stats.map(|(r, c)| serde_json::json!({ "runs": r, "chromatic": c })),
     })
