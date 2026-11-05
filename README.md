@@ -84,9 +84,12 @@ The first time, Windows may show "Windows protected your PC" (the program isn't 
 
 見 [CHANGELOG.md](CHANGELOG.md)。See [CHANGELOG.md](CHANGELOG.md).
 
-## 編譯 · Building
+<details>
+<summary><b>編譯 · Building</b>（開發者用 · for developers）</summary>
 
 Windows：點兩下 `build-windows.bat`（第一次會自動安裝 Rust 與建置工具）。Run `build-windows.bat` (it installs Rust and the build tools the first time). Linux（計算與讀圖的測試 · the solver and reader tests）：`cargo test --release --workspace`。
+
+</details>
 
 ## 致謝與授權 · Credits and licence
 
