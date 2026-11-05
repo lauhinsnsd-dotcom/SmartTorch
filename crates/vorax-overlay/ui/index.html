@@ -129,7 +129,7 @@ function toSc(t) {
 }
 
 let S = null;           // the state, from SmartTorch
-let page = "vorax";     // vorax | tartarus | codes | settings
+let page = "vorax";     // vorax | tartarus | etor | codes | settings
 let CODES = null;       // 流派碼: [{name, code}], from SmartTorch's codes.json; saved whole after each change
 let editing = -1;       // the code being changed, or -1
 let drawn = "";         // the 流派碼 page as drawn (page and language): not drawn again while it's open, so typing isn't lost
@@ -151,6 +151,7 @@ function nav() {
   const items = [
     ["vorax", L("渴癮症助手", "Vorax helper"), v ? (v.running ? "g" : "n") : ""],
     ["tartarus", L("囚獸助手", "Tartarus helper"), t && t.installed ? (t.running ? "g" : "n") : ""],
+    ["etor", L("易火", "ETor"), S && S.etor && S.etor.exe ? (S.etor.running ? "g" : "n") : ""],
     ["codes", L("流派碼", "Build codes"), ""],
     ["settings", L("設定", "Settings"), S && S.update ? "newdot" : ""],
   ];
@@ -319,6 +320,7 @@ function general() {
       <div class="note" style="font-size:14px">${L("開遊戲時自動啟動、關遊戲時自動停止：", "Started with the game, stopped when it closes:")}</div>
       <div class="swrow">${sw(S.autoVorax, "set", "autoVorax", L("渴癮症助手", "Vorax helper"))}<span>${L("渴癮症助手", "Vorax helper")}</span></div>
       <div class="swrow">${sw(S.autoTartarus, "set", "autoTartarus", L("囚獸助手", "Tartarus helper"))}<span>${L("囚獸助手", "Tartarus helper")}</span>${S.tartarus && S.tartarus.installed ? "" : `<span class="note">${L("尚未安裝", "not installed yet")}</span>`}</div>
+      <div class="swrow">${sw(S.autoEtor, "set", "autoEtor", L("易火", "ETor"))}<span>${L("易火", "ETor")}</span><span class="note">${S.etor && S.etor.exe ? L("只會自動開啟，不會自動關閉", "opened only, never closed") : L("尚未設定位置", "not chosen yet")}</span></div>
     </div>
     <p class="para sep">${L("按視窗的 ✕ 只會縮到右下角，工具繼續執行。要完全關閉，請在右下角圖示按右鍵 →「結束」。", "The window's ✕ only puts it in the tray: the tools keep running. To close SmartTorch, right-click its tray icon → Quit.")}</p>
     <div class="sep" style="display:flex;flex-direction:column;gap:12px">${upd}</div>
@@ -366,6 +368,31 @@ function about() {
       <div class="note" style="font-size:14px">${L("字型：Noto Sans TC／SC（SIL Open Font License 1.1）。授權全文見資料夾內的 LICENSE.txt 與 FONT-LICENSE.txt。", "Fonts: Noto Sans TC/SC (SIL Open Font License 1.1). The licences in full: LICENSE.txt and FONT-LICENSE.txt in its folder.")}</div>
     </div>
   </section>`;
+}
+
+function etor() {
+  const e = S.etor || {};
+  const state = e.running ? `<span class="badge run">${L("已開啟", "Open")}</span>`
+    : e.opening ? `<span class="badge stop">${L("開啟中…", "Opening…")}</span>`
+    : `<span class="badge stop">${L("未開啟", "Not open")}</span>`;
+  const where = e.exe
+    ? `${dot("g")}<div style="min-width:0"><div>${L("已找到", "Found")}</div><div class="path" data-noconv>${esc(e.exe)}</div></div>`
+    : `${dot("n")}<div>${L("尚未設定：開啟一次易火，SmartTorch 會自動記住；或按「選擇…」", "Not chosen yet: open ETor once and SmartTorch remembers it, or press Choose…")}</div>`;
+  return `
+  <div class="head">
+    <div><h1>${L("易火", "ETor")}</h1><div class="sub">${L("收益統計工具「易火 ETor」的啟動器", "A launcher for ETor, the income tracker")}</div></div>
+    <div class="row">${state}
+      <button class="btn big ${e.running ? "" : "gold"}" data-cmd="etor" ${!e.exe || e.running || e.opening ? "disabled" : ""}>${L("開啟易火", "Open ETor")}</button></div>
+  </div>
+  <section class="card" aria-label="${L("位置", "Location")}">
+    <div class="grid3">
+      <div class="k">${L("程式位置", "Program")}</div><div class="v">${where}</div>
+      <button class="btn small" data-cmd="etorChoose">${L("選擇…", "Choose…")}</button>
+    </div>
+    <div class="swrow sep">${sw(S.autoEtor, "set", "autoEtor", L("開遊戲時自動開啟易火", "Open ETor with the game"))}<span>${L("開遊戲時自動開啟易火", "Open ETor with the game")}</span><span class="note">${L("關遊戲時不會關閉它", "it isn't closed with the game")}</span></div>
+  </section>
+  <div class="tip"><b>${L("Windows 詢問權限？", "Windows asks for permission?")}</b> ${L("易火需要系統管理員權限，每次開啟時 Windows 都會詢問「是否允許變更」，請按「是」。", "ETor needs administrator rights, so Windows asks each time it's opened: press Yes.")}</div>
+  <p class="note" style="margin:0">${L("易火是其他作者的程式，請自行從其官方管道下載安裝。SmartTorch 只負責開啟它，不會修改或讀取它的資料。", "ETor is another author's program: install it from its own official source. SmartTorch only opens it, and neither changes nor reads its data.")}</p>`;
 }
 
 function codeRow(c, i) {
@@ -464,7 +491,7 @@ function render() {
   drawn = page === "codes" ? key : "";
   const keep = page === "codes" ? ["cn", "cc"].map((id) => { const e = document.getElementById(id); return e ? e.value : ""; }) : null;
   const top = main.scrollTop;
-  main.innerHTML = page === "vorax" ? vorax() : page === "tartarus" ? tartarus() : page === "codes" ? codes() : settings();
+  main.innerHTML = page === "vorax" ? vorax() : page === "tartarus" ? tartarus() : page === "codes" ? codes() : page === "etor" ? etor() : settings();
   main.scrollTop = top;
   if (keep) ["cn", "cc"].forEach((id, k) => { const e = document.getElementById(id); if (e) e.value = keep[k]; });
   if (sc) convert(main);

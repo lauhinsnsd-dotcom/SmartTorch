@@ -260,6 +260,12 @@ pub struct Settings {
     /// the toolbox: 囚獸助手 started with the game and stopped when it closes (unset: as auto_game, from 1.0.0)
     #[serde(default)]
     pub auto_tartarus: Option<bool>,
+    /// the toolbox: 易火 (ETor) opened as the game opens (never closed by the toolbox)
+    #[serde(default)]
+    pub auto_etor: bool,
+    /// the toolbox: 易火's program, chosen or found as it runs
+    #[serde(default)]
+    pub etor_exe: Option<PathBuf>,
     /// the toolbox: the runs counted in the statistics start here (log time, seconds; 0: all)
     #[serde(default)]
     pub stats_since: f64,
@@ -287,7 +293,7 @@ fn yes() -> bool {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, auto_vorax: None, auto_tartarus: None, stats_since: 0.0, first_run_done: false, close_hint_shown: false, tartarus_exe: None, tartarus_base: None, lang: String::new() }
+        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, auto_vorax: None, auto_tartarus: None, auto_etor: false, etor_exe: None, stats_since: 0.0, first_run_done: false, close_hint_shown: false, tartarus_exe: None, tartarus_base: None, lang: String::new() }
     }
 }
 
@@ -350,6 +356,12 @@ pub fn choose_tartarus(owner: Option<Hwnd>) -> Option<PathBuf> {
     let t = crate::zh::tr("選擇囚獸助手 TartarusSolver.exe", "Choose Tartarus Solver, TartarusSolver.exe");
     let a = crate::zh::tr("囚獸助手 (TartarusSolver.exe)", "Tartarus Solver (TartarusSolver.exe)");
     choose_file(owner, &t, &[(&a, "TartarusSolver.exe")])
+}
+
+/// Windows' file dialog for 易火's program (易火-ETor.exe); None when cancelled.
+pub fn choose_etor(owner: Option<Hwnd>) -> Option<PathBuf> {
+    let t = crate::zh::tr("選擇 ETor", "Choose ETor");
+    choose_file(owner, &t, &[("ETor (*.exe)", "*.exe")])
 }
 
 /// Windows' file dialog: a file to open, of these kinds (name, pattern); None when cancelled.

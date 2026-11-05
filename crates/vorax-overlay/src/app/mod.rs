@@ -2,6 +2,7 @@
 //! (the log, the pictures, the reading and the advice).
 
 mod capture;
+mod etor;
 mod hub;
 mod menu;
 mod logview;

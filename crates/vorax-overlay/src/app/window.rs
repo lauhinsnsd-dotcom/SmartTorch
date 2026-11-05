@@ -773,6 +773,8 @@ fn state_json(s: &mut State) -> String {
         "boot": super::sys::starts_with_windows(),
         "autoVorax": s.settings.auto_vorax(),
         "autoTartarus": s.settings.auto_tartarus(),
+        "autoEtor": s.settings.auto_etor,
+        "etor": etor_json(s),
         "firstRunDone": s.settings.first_run_done,
         "vorax": {
             "running": s.running,
@@ -881,6 +883,10 @@ fn from_hub(text: &str) {
                 }
                 "autoTartarus" => {
                     s.settings.auto_tartarus = Some(value.as_bool().unwrap_or(true));
+                    s.settings.save();
+                }
+                "autoEtor" => {
+                    s.settings.auto_etor = value.as_bool().unwrap_or(false);
                     s.settings.save();
                 }
                 _ => {}
@@ -996,6 +1002,26 @@ fn from_hub(text: &str) {
             super::sys::save_codes(&list);
             return;
         }
+        "etor" => {
+            with_state(|s| {
+                let chosen = super::etor::installed(s.settings.etor_exe.as_deref());
+                if let Some(exe) = chosen {
+                    if super::etor::running(Some(&exe)).is_none() {
+                        super::etor::open(&exe);
+                    }
+                }
+            });
+        }
+        "etorChoose" => {
+            // the dialog runs its own message loop: never inside the state's borrow
+            if let Some(p) = super::sys::choose_etor(super::hub::hwnd()) {
+                with_state(|s| {
+                    note(&format!("ETor chosen: {}", p.display()));
+                    s.settings.etor_exe = Some(p);
+                    s.settings.save();
+                });
+            }
+        }
         "tartarusCheck" => {
             with_state(|s| check_tartarus(s));
         }
@@ -1059,6 +1085,14 @@ fn tick(s: &mut State) -> bool {
             s.tart_version = None;
         }
     }
+    // 易火 found as it runs, when not chosen yet (or moved): remembered
+    if super::etor::installed(s.settings.etor_exe.as_deref()).is_none() {
+        if let Some(found) = super::etor::find_running() {
+            note(&format!("ETor found running: {}", found.display()));
+            s.settings.etor_exe = Some(found);
+            s.settings.save();
+        }
+    }
     let exe = tart_exe(s);
     let mut changed = s.tart.tick(exe.as_deref());
     let open = find_game_window().is_some();
@@ -1068,6 +1102,14 @@ fn tick(s: &mut State) -> bool {
         let (vorax, tartarus) = (s.settings.auto_vorax(), s.settings.auto_tartarus());
         if vorax || tartarus {
             note(&format!("the game {}: {} (Vorax {vorax}, Tartarus {tartarus})", if open { "opened" } else { "closed" }, if open { "starting the tools chosen" } else { "stopping the tools chosen" }));
+        }
+        // 易火 only opened with the game (it's never closed by the toolbox)
+        if open && s.settings.auto_etor {
+            match super::etor::installed(s.settings.etor_exe.as_deref()) {
+                Some(e) if super::etor::running(Some(&e)).is_none() => super::etor::open(&e),
+                Some(_) => {}
+                None => note("the game opened: ETor isn't chosen yet, not opened"),
+            }
         }
         if open {
             if vorax && !s.running {
@@ -1095,6 +1137,17 @@ fn tick(s: &mut State) -> bool {
 }
 
 /// Looks up 囚獸助手's latest release on its own thread.
+/// 易火 as the page shows it.
+fn etor_json(s: &State) -> serde_json::Value {
+    let exe = super::etor::installed(s.settings.etor_exe.as_deref());
+    let running = exe.as_deref().is_some_and(|e| super::etor::running(Some(e)).is_some());
+    serde_json::json!({
+        "exe": exe.as_ref().map(|p| p.display().to_string()),
+        "running": running,
+        "opening": !running && super::etor::opening(),
+    })
+}
+
 fn check_tartarus(s: &State) {
     let (tx, waker) = (s.to_self.clone(), Waker(Hwnd::of(s.hwnd)));
     std::thread::spawn(move || {
