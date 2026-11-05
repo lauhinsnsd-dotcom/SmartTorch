@@ -771,7 +771,8 @@ fn state_json(s: &mut State) -> String {
         "updating": s.updating,
         "upToDate": s.up_to_date,
         "boot": super::sys::starts_with_windows(),
-        "autoGame": s.settings.auto_game,
+        "autoVorax": s.settings.auto_vorax(),
+        "autoTartarus": s.settings.auto_tartarus(),
         "firstRunDone": s.settings.first_run_done,
         "vorax": {
             "running": s.running,
@@ -874,8 +875,12 @@ fn from_hub(text: &str) {
                     follow(s);
                 }
                 "boot" => super::sys::set_start_with_windows(value.as_bool().unwrap_or(false)),
-                "autoGame" => {
-                    s.settings.auto_game = value.as_bool().unwrap_or(true);
+                "autoVorax" => {
+                    s.settings.auto_vorax = Some(value.as_bool().unwrap_or(true));
+                    s.settings.save();
+                }
+                "autoTartarus" => {
+                    s.settings.auto_tartarus = Some(value.as_bool().unwrap_or(true));
                     s.settings.save();
                 }
                 _ => {}
@@ -980,6 +985,26 @@ fn from_hub(text: &str) {
                 });
             }
         }
+        // 流派碼: the page keeps the list and sends all of it after each change
+        "codesGet" => {
+            let list = super::sys::load_codes();
+            super::hub::post(&serde_json::json!({ "type": "codes", "list": list }).to_string());
+            return;
+        }
+        "codesSave" => {
+            let list: Vec<super::sys::Code> = serde_json::from_value(v["list"].clone()).unwrap_or_default();
+            super::sys::save_codes(&list);
+            return;
+        }
+        "copy" => {
+            let text = v["text"].as_str().unwrap_or("");
+            let ok = super::hub::hwnd().is_some_and(|h| super::sys::copy_text(h.get(), text));
+            if !ok {
+                note("the code wasn't put on the clipboard");
+            }
+            super::hub::post(&serde_json::json!({ "type": "copied", "ok": ok, "id": v["id"] }).to_string());
+            return;
+        }
         "tartarusCheck" => {
             with_state(|s| check_tartarus(s));
         }
@@ -1049,26 +1074,29 @@ fn tick(s: &mut State) -> bool {
     if open != s.game_open {
         s.game_open = open;
         changed = true;
-        if s.settings.auto_game {
-            note(if open { "the game opened: starting the tools" } else { "the game closed: stopping the tools" });
-            if open {
-                if !s.running {
-                    s.running = true;
-                    let _ = s.tx.send(ToWorker::Pause(false));
-                }
+        let (vorax, tartarus) = (s.settings.auto_vorax(), s.settings.auto_tartarus());
+        if vorax || tartarus {
+            note(&format!("the game {}: {} (Vorax {vorax}, Tartarus {tartarus})", if open { "opened" } else { "closed" }, if open { "starting the tools chosen" } else { "stopping the tools chosen" }));
+        }
+        if open {
+            if vorax && !s.running {
+                s.running = true;
+                let _ = s.tx.send(ToWorker::Pause(false));
+            }
+            if tartarus {
                 if let Some(exe) = &exe {
                     s.tart.start(exe);
                 }
-            } else {
-                if s.running {
-                    s.running = false;
-                    let _ = s.tx.send(ToWorker::Pause(true));
-                    s.placed = None;
-                    follow(s);
-                }
-                if s.tart.want {
-                    s.tart.stop();
-                }
+            }
+        } else {
+            if vorax && s.running {
+                s.running = false;
+                let _ = s.tx.send(ToWorker::Pause(true));
+                s.placed = None;
+                follow(s);
+            }
+            if tartarus && s.tart.want {
+                s.tart.stop();
             }
         }
     }

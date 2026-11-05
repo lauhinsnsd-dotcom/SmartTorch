@@ -83,6 +83,19 @@ h2 { margin: 0; font-size: 16px; color: var(--gold2); }
 .bar { height: 8px; border-radius: 4px; background: var(--line2); overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--gold); }
 .newdot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); display: inline-block; }
+.cform { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 10px; align-items: end; }
+.cform label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--mute); }
+input.tx { min-height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line2); background: var(--card2); color: var(--text); font-family: inherit; font-size: 14px; user-select: text; min-width: 0; width: 100%; }
+input.tx:focus { outline: none; border-color: var(--gold); }
+input.mono, .ccode { font-family: Consolas, "Cascadia Mono", monospace; }
+.clist { display: flex; flex-direction: column; gap: 8px; }
+.crow { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.crow.drag { opacity: .4; } .crow.over { border-color: var(--gold); }
+.grip { color: var(--grey); cursor: grab; font-size: 18px; text-align: center; letter-spacing: -3px; }
+.cname { font-weight: 700; overflow-wrap: anywhere; user-select: text; }
+.ccode { font-size: 13px; color: var(--soft); margin-top: 4px; overflow-wrap: anywhere; user-select: text; }
+.cedit { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 8px; }
+.btn.ok { border-color: var(--green); color: var(--green2); }
 @media (max-width: 760px) { nav { width: 190px; } main { padding: 24px; } }
 </style>
 </head>
@@ -116,7 +129,10 @@ function toSc(t) {
 }
 
 let S = null;           // the state, from SmartTorch
-let page = "vorax";     // vorax | tartarus | settings
+let page = "vorax";     // vorax | tartarus | codes | settings
+let CODES = null;       // 流派碼: [{name, code}], from SmartTorch's codes.json; saved whole after each change
+let editing = -1;       // the code being changed, or -1
+let drawn = "";         // the 流派碼 page as drawn (page and language): not drawn again while it's open, so typing isn't lost
 let tab = "general";    // the settings' tab
 const send = (o) => window.chrome && window.chrome.webview && window.chrome.webview.postMessage(o);
 const esc = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -135,6 +151,7 @@ function nav() {
   const items = [
     ["vorax", L("渴癮症助手", "Vorax helper"), v ? (v.running ? "g" : "n") : ""],
     ["tartarus", L("囚獸助手", "Tartarus helper"), t && t.installed ? (t.running ? "g" : "n") : ""],
+    ["codes", L("流派碼", "Build codes"), ""],
     ["settings", L("設定", "Settings"), S && S.update ? "newdot" : ""],
   ];
   document.getElementById("navs").innerHTML = items.map(([id, label, d]) =>
@@ -298,7 +315,11 @@ function general() {
   return `
   <section class="card" aria-label="${L("一般", "General")}">
     <div class="swrow">${sw(S.boot, "set", "boot", L("開機時自動啟動 SmartTorch", "Start SmartTorch with Windows"))}<span>${L("開機時自動啟動 SmartTorch", "Start SmartTorch with Windows")}</span><span class="note">${L("縮在右下角，不會彈出視窗", "in the tray, no window")}</span></div>
-    <div class="swrow">${sw(S.autoGame, "set", "autoGame", L("開遊戲時自動啟動工具，關遊戲時自動停止", "Start the tools with the game, stop them when it closes"))}<span>${L("開遊戲時自動啟動工具，關遊戲時自動停止", "Start the tools with the game, stop them when it closes")}</span></div>
+    <div class="sep" style="display:flex;flex-direction:column;gap:12px">
+      <div class="note" style="font-size:14px">${L("開遊戲時自動啟動、關遊戲時自動停止：", "Started with the game, stopped when it closes:")}</div>
+      <div class="swrow">${sw(S.autoVorax, "set", "autoVorax", L("渴癮症助手", "Vorax helper"))}<span>${L("渴癮症助手", "Vorax helper")}</span></div>
+      <div class="swrow">${sw(S.autoTartarus, "set", "autoTartarus", L("囚獸助手", "Tartarus helper"))}<span>${L("囚獸助手", "Tartarus helper")}</span>${S.tartarus && S.tartarus.installed ? "" : `<span class="note">${L("尚未安裝", "not installed yet")}</span>`}</div>
+    </div>
     <p class="para sep">${L("按視窗的 ✕ 只會縮到右下角，工具繼續執行。要完全關閉，請在右下角圖示按右鍵 →「結束」。", "The window's ✕ only puts it in the tray: the tools keep running. To close SmartTorch, right-click its tray icon → Quit.")}</p>
     <div class="sep" style="display:flex;flex-direction:column;gap:12px">${upd}</div>
   </section>`;
@@ -347,6 +368,42 @@ function about() {
   </section>`;
 }
 
+function codeRow(c, i) {
+  if (i === editing) return `
+    <div class="crow" data-i="${i}">
+      <div class="grip"></div>
+      <div class="cedit"><input class="tx" id="en${i}" value="${esc(c.name)}" aria-label="${L("名字", "Name")}"><input class="tx mono" id="ec${i}" value="${esc(c.code)}" aria-label="${L("流派碼", "Code")}" spellcheck="false"></div>
+      <div class="row" style="gap:6px"><button class="btn small gold" data-code="saveEdit" data-i="${i}">${L("儲存", "Save")}</button><button class="btn small" data-code="cancel">${L("取消", "Cancel")}</button></div>
+    </div>`;
+  return `
+    <div class="crow" draggable="true" data-i="${i}">
+      <div class="grip" title="${L("拖動排序", "Drag to reorder")}">⋮⋮</div>
+      <div style="min-width:0"><div class="cname" data-noconv>${esc(c.name) || `<span class="note">${L("（未命名）", "(no name)")}</span>`}</div><div class="ccode" data-noconv>${esc(c.code)}</div></div>
+      <div class="row" style="gap:6px"><button class="btn small goldline" data-code="copy" data-i="${i}" id="cp${i}">${L("複製", "Copy")}</button><button class="btn small" data-code="edit" data-i="${i}">${L("修改", "Edit")}</button><button class="btn small" data-code="del" data-i="${i}">${L("刪除", "Delete")}</button></div>
+    </div>`;
+}
+
+function codes() {
+  const list = CODES == null ? `<div class="note">${L("載入中…", "Loading…")}</div>`
+    : CODES.length ? CODES.map(codeRow).join("")
+    : `<div class="tip">${L("還沒有流派碼。在上面填入名字和流派碼，按「儲存」。", "No codes yet. Fill in a name and a code above, then Save.")}</div>`;
+  return `
+  <div><h1>${L("流派碼", "Build codes")}</h1><div class="sub">${L("把遊戲的流派碼存在這裡，按「複製」後到遊戲裡貼上。", "Keep the game's build codes here: Copy, then paste it in the game.")}</div></div>
+  <section class="card" aria-label="${L("新增", "Add")}">
+    <div class="cform">
+      <label>${L("名字", "Name")}<input class="tx" id="cn" placeholder="${L("例如：貓1 過萬7", "e.g. Cat 1, boss farming")}"></label>
+      <label>${L("流派碼", "Code")}<input class="tx mono" id="cc" placeholder="${L("貼上流派碼", "Paste the code")}" spellcheck="false"></label>
+      <button class="btn gold" data-code="add">${L("儲存", "Save")}</button>
+    </div>
+  </section>
+  <div class="clist" id="clist">${list}</div>
+  ${CODES && CODES.length > 1 ? `<div class="note">${L("按住左邊的 ⋮⋮ 拖動可以排序。", "Drag ⋮⋮ on the left to reorder.")}</div>` : ""}`;
+}
+
+function saveCodes() { send({ cmd: "codesSave", list: CODES }); }
+// the list drawn again (after a change), the form's typing kept
+function drawCodes() { drawn = ""; render(); }
+
 function settings() {
   const tabs = [["general", L("一般", "General")], ["guide", L("教學", "Getting started")], ["help", L("疑難排解", "Troubleshooting")], ["about", L("關於", "About")]];
   const body = { general, guide, help, about }[tab]();
@@ -360,8 +417,8 @@ function convert(root) {
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const n of nodes) if (/[\u3400-\u9fff]/.test(n.nodeValue) && !n.parentElement.closest("[data-noconv]")) n.nodeValue = toSc(n.nodeValue);
-  for (const el of root.querySelectorAll("[aria-label],[title]")) {
-    for (const a of ["aria-label", "title"]) if (el.hasAttribute(a)) el.setAttribute(a, toSc(el.getAttribute(a)));
+  for (const el of root.querySelectorAll("[aria-label],[title],[placeholder]")) {
+    for (const a of ["aria-label", "title", "placeholder"]) if (el.hasAttribute(a)) el.setAttribute(a, toSc(el.getAttribute(a)));
   }
 }
 
@@ -371,11 +428,18 @@ function render() {
   document.body.classList.toggle("sc", sc);
   document.documentElement.lang = en() ? "en" : sc ? "zh-Hans" : "zh-Hant";
   nav();
+  if (sc) convert(document.querySelector("nav"));
   const main = document.getElementById("main");
+  // the 流派碼 page isn't drawn again by the state that comes every few seconds: what's typed stays
+  const key = page + ":" + S.lang;
+  if (page === "codes" && drawn === key) return;
+  drawn = page === "codes" ? key : "";
+  const keep = page === "codes" ? ["cn", "cc"].map((id) => { const e = document.getElementById(id); return e ? e.value : ""; }) : null;
   const top = main.scrollTop;
-  main.innerHTML = page === "vorax" ? vorax() : page === "tartarus" ? tartarus() : settings();
+  main.innerHTML = page === "vorax" ? vorax() : page === "tartarus" ? tartarus() : page === "codes" ? codes() : settings();
   main.scrollTop = top;
-  if (sc) { convert(document.querySelector("nav")); convert(main); }
+  if (keep) ["cn", "cc"].forEach((id, k) => { const e = document.getElementById(id); if (e) e.value = keep[k]; });
+  if (sc) convert(main);
 }
 
 document.addEventListener("click", (e) => {
@@ -386,6 +450,7 @@ document.addEventListener("click", (e) => {
   if (t.dataset.tab) { tab = t.dataset.tab; render(); return; }
   if (t.dataset.goto) { page = "settings"; tab = t.dataset.goto; render(); document.getElementById("main").scrollTop = 0; return; }
   if (t.dataset.url) { send({ cmd: "open", url: t.dataset.url }); return; }
+  if (t.dataset.code) { codeAction(t.dataset.code, Number(t.dataset.i)); return; }
   if (t.dataset.confirm) {
     const words = {
       clearRecords: L("清除紀錄？對局紀錄、統計、記錄檔和記下的畫面都會刪除，之後從零開始。（有問題要回報的話，請先按「回報問題」再清除。）", "Clear records? Your runs, the statistics, the log and the pictures set aside are deleted, and it starts from zero. (Report a problem first if you have one.)"),
@@ -410,10 +475,98 @@ document.addEventListener("click", (e) => {
   if (t.dataset.then) { page = t.dataset.then; render(); }
 });
 
+function codeAction(act, i) {
+  if (!CODES) return;
+  const val = (id) => (document.getElementById(id) ? document.getElementById(id).value.trim() : "");
+  if (act === "add") {
+    const name = val("cn"), code = val("cc");
+    if (!code) { const e = document.getElementById("cc"); if (e) e.focus(); return; }
+    CODES.unshift({ name, code });
+    saveCodes();
+    document.getElementById("cn").value = "";
+    document.getElementById("cc").value = "";
+    editing = -1;
+    drawCodes();
+    document.getElementById("cn").focus();
+  } else if (act === "copy") {
+    send({ cmd: "copy", text: CODES[i].code, id: i });
+  } else if (act === "edit") {
+    editing = i; drawCodes();
+    const e = document.getElementById("en" + i); if (e) e.focus();
+  } else if (act === "cancel") {
+    editing = -1; drawCodes();
+  } else if (act === "saveEdit") {
+    const code = val("ec" + i);
+    if (!code) return;
+    CODES[i] = { name: val("en" + i), code };
+    editing = -1; saveCodes(); drawCodes();
+  } else if (act === "del") {
+    const words = L(`刪除「${CODES[i].name || CODES[i].code}」？`, `Delete "${CODES[i].name || CODES[i].code}"?`);
+    if (!confirm(S.lang === "sc" ? toSc(words) : words)) return;
+    CODES.splice(i, 1);
+    if (editing === i) editing = -1; else if (editing > i) editing--;
+    saveCodes(); drawCodes();
+  }
+}
+
+// Enter saves (in the form, or the code being changed)
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || page !== "codes" || !e.target.matches("input.tx")) return;
+  e.preventDefault();
+  if (e.target.id === "cn" || e.target.id === "cc") codeAction("add");
+  else if (editing >= 0) codeAction("saveEdit", editing);
+});
+
+// 流派碼 reordered by dragging
+let dragFrom = -1;
+document.addEventListener("dragstart", (e) => {
+  const r = e.target.closest && e.target.closest(".crow[draggable]");
+  if (!r || editing >= 0) { e.preventDefault(); return; }
+  dragFrom = Number(r.dataset.i);
+  r.classList.add("drag");
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", "");
+});
+document.addEventListener("dragover", (e) => {
+  const r = dragFrom >= 0 && e.target.closest && e.target.closest(".crow");
+  if (!r) return;
+  e.preventDefault();
+  document.querySelectorAll(".crow.over").forEach((x) => x !== r && x.classList.remove("over"));
+  r.classList.add("over");
+});
+document.addEventListener("drop", (e) => {
+  const r = dragFrom >= 0 && e.target.closest && e.target.closest(".crow");
+  if (!r) return;
+  e.preventDefault();
+  const to = Number(r.dataset.i);
+  if (to !== dragFrom) {
+    const [c] = CODES.splice(dragFrom, 1);
+    CODES.splice(to, 0, c);
+    saveCodes();
+  }
+  dragFrom = -1;
+  drawCodes();
+});
+document.addEventListener("dragend", () => {
+  if (dragFrom < 0) return;
+  dragFrom = -1;
+  document.querySelectorAll(".crow.drag, .crow.over").forEach((x) => x.classList.remove("drag", "over"));
+});
+
 window.chrome && window.chrome.webview && window.chrome.webview.addEventListener("message", (e) => {
   const m = e.data;
   if (!m) return;
   if (m.type === "state") { S = m; render(); }
+  else if (m.type === "codes") { CODES = Array.isArray(m.list) ? m.list : []; if (page === "codes") drawCodes(); }
+  else if (m.type === "copied") {
+    const b = document.getElementById("cp" + m.id);
+    if (b) {
+      b.textContent = m.ok ? L("已複製 ✓", "Copied ✓") : L("複製失敗", "Not copied");
+      if (S.lang === "sc") b.textContent = toSc(b.textContent);
+      b.classList.toggle("ok", !!m.ok);
+      setTimeout(() => { b.textContent = L("複製", "Copy"); if (S.lang === "sc") b.textContent = toSc(b.textContent); b.classList.remove("ok"); }, 1000);
+    }
+  }
   else if (m.type === "tab") {
     const [p, t] = String(m.tab).split(":");
     page = p; if (t) tab = t; render();
@@ -423,6 +576,7 @@ window.chrome && window.chrome.webview && window.chrome.webview.addEventListener
 // the "seconds ago" and the game's state move on by themselves
 setInterval(() => send({ cmd: "refresh" }), 3000);
 send({ cmd: "ready" });
+send({ cmd: "codesGet" });
 </script>
 </body>
 </html>

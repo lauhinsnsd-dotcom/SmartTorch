@@ -254,6 +254,12 @@ pub struct Settings {
     /// the toolbox: the tools started when the game opens and stopped when it closes
     #[serde(default = "yes")]
     pub auto_game: bool,
+    /// the toolbox: 渴癮症助手 started with the game and stopped when it closes (unset: as auto_game, from 1.0.0)
+    #[serde(default)]
+    pub auto_vorax: Option<bool>,
+    /// the toolbox: 囚獸助手 started with the game and stopped when it closes (unset: as auto_game, from 1.0.0)
+    #[serde(default)]
+    pub auto_tartarus: Option<bool>,
     /// the toolbox: the runs counted in the statistics start here (log time, seconds; 0: all)
     #[serde(default)]
     pub stats_since: f64,
@@ -281,11 +287,19 @@ fn yes() -> bool {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, stats_since: 0.0, first_run_done: false, close_hint_shown: false, tartarus_exe: None, tartarus_base: None, lang: String::new() }
+        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, auto_vorax: None, auto_tartarus: None, stats_since: 0.0, first_run_done: false, close_hint_shown: false, tartarus_exe: None, tartarus_base: None, lang: String::new() }
     }
 }
 
 impl Settings {
+    /// 渴癮症助手 started and stopped with the game
+    pub fn auto_vorax(&self) -> bool {
+        self.auto_vorax.unwrap_or(self.auto_game)
+    }
+    /// 囚獸助手 started and stopped with the game
+    pub fn auto_tartarus(&self) -> bool {
+        self.auto_tartarus.unwrap_or(self.auto_game)
+    }
     pub fn load() -> Settings {
         std::fs::read_to_string(data_dir().join("settings.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
     }
@@ -412,5 +426,68 @@ mod log_tests {
     fn the_games_program_gives_its_logs_place() {
         let logs = logs_above(Path::new("X:\\Games\\Torchlight Infinite\\Game\\UE_game\\Binaries\\Win64\\UE_game-Win64-Shipping.exe"));
         assert!(logs.iter().any(|p| p == Path::new("X:\\Games\\Torchlight Infinite\\Game\\UE_game\\TorchLight\\Saved\\Logs\\UE_game.log")));
+    }
+}
+
+/// The toolbox's 流派碼 page: the codes the player saved (name and code, in their order), in
+/// %APPDATA%\\VoraxRs\\codes.json. "Clear records" leaves them.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct Code {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub code: String,
+}
+
+pub fn load_codes() -> Vec<Code> {
+    std::fs::read_to_string(data_dir().join("codes.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+}
+
+/// Written to a new file first, then moved over the old one, so a crash never leaves half a list.
+pub fn save_codes(codes: &[Code]) {
+    let dir = data_dir();
+    let tmp = dir.join("codes.json.new");
+    if std::fs::write(&tmp, serde_json::to_string_pretty(codes).unwrap()).is_ok() {
+        let _ = std::fs::rename(&tmp, dir.join("codes.json"));
+    }
+}
+
+/// Puts text on Windows' clipboard (the 流派碼 page's Copy): the player pastes it in the game themselves.
+pub fn copy_text(owner: HWND, text: &str) -> bool {
+    use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
+    use windows::Win32::Foundation::{GlobalFree, HANDLE};
+    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    const CF_UNICODETEXT: u32 = 13;
+    let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        // another program may hold the clipboard for a moment
+        let mut open = false;
+        for _ in 0..10 {
+            if OpenClipboard(owner).is_ok() {
+                open = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        if !open {
+            return false;
+        }
+        let mut done = false;
+        if EmptyClipboard().is_ok() {
+            if let Ok(mem) = GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2) {
+                let p = GlobalLock(mem) as *mut u16;
+                if !p.is_null() {
+                    std::ptr::copy_nonoverlapping(wide.as_ptr(), p, wide.len());
+                    let _ = GlobalUnlock(mem);
+                    // once set, the clipboard owns the memory
+                    done = SetClipboardData(CF_UNICODETEXT, HANDLE(mem.0)).is_ok();
+                }
+                if !done {
+                    let _ = GlobalFree(mem);
+                }
+            }
+        }
+        let _ = CloseClipboard();
+        done
     }
 }
