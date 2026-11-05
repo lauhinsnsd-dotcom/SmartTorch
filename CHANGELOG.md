@@ -3,6 +3,12 @@
 每個版本更新了什麼。有新版本時，SmartTorch 的更新提示也會顯示該版本的內容。
 What each version changed. When a new version is out, SmartTorch's update note shows its part.
 
+## v1.0.3
+
+**渴癮症助手 · Vorax helper**
+- 修正：Windows 裝有英文時，中文遊戲的卡名會用英文文字辨識讀取而讀不到（只能靠卡面圖案，常出現「未讀到」）。現在卡名跟隨 SmartTorch 的語言讀取：繁體用繁體中文辨識、简体用簡體中文辨識、English 用英文辨識，不再受 Windows 語言順序影響。 Fixed: with English installed in Windows, a Chinese client's card names were read with English text recognition and missed (cards told by their pictures only, often "not read"). Card names are now read in SmartTorch's language: Traditional or Simplified Chinese, or English, whatever the order of Windows' languages.
+- 請讓 SmartTorch 的語言和遊戲相同（英文遊戲請選 English）。Windows 沒有中文文字辨識時，「文字辨識」一行會顯示黃點。 Keep SmartTorch's language the same as the game's (English for an English client). Text reading shows a yellow dot when Windows has no Chinese text recognition.
+
 ## v1.0.2
 
 **更新提示 · Updates**
