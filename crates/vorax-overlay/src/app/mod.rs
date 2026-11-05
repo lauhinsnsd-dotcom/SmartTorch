@@ -23,9 +23,15 @@ use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CON
 
 /// The language card titles are read in, from SmartTorch's interface language ("tc", "sc" or "en"): Chinese
 /// words, a Chinese client, read with a Chinese reader even when Windows also has an English one (v1.0.0 to 1.0.2
-/// read with the English one first, as the start files' --ocr-lang zh was gone); English with the English one.
+/// read with the English one first, as the start files' --ocr-lang zh was gone), Simplified words with a
+/// Simplified one first and Traditional with a Traditional one (not by the order of Windows' languages); English
+/// with the English one.
 pub fn ocr_lang(lang: &str) -> Option<String> {
-    (lang != "en").then(|| "zh".to_string())
+    match lang {
+        "en" => None,
+        "sc" => Some("zh-Hans".to_string()),
+        _ => Some("zh-Hant".to_string()),
+    }
 }
 
 pub fn run(args: &[String]) {

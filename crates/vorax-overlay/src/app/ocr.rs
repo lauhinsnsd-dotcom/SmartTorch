@@ -17,16 +17,22 @@ pub struct Ocr {
     pub language: String,
 }
 
+const HANT: &[&str] = &["zh-Hant-TW", "zh-TW", "zh-Hant-HK", "zh-HK", "zh-Hant"];
+const HANS: &[&str] = &["zh-Hans-CN", "zh-CN", "zh-Hans"];
+
 impl Ocr {
     pub fn new() -> windows::core::Result<Ocr> {
         Ocr::with_language(None)
     }
 
-    /// `prefer`: a language tag to read in when Windows has its text recognition ("zh" for any Chinese one, the
-    /// Traditional ones first); otherwise, or when it isn't installed, as `new`.
+    /// `prefer`: a language tag to read in when Windows has its text recognition ("zh" or "zh-Hant" for any Chinese
+    /// one, the Traditional ones first; "zh-Hans", the Simplified ones first); otherwise, or when it isn't installed,
+    /// as `new`.
     pub fn with_language(prefer: Option<&str>) -> windows::core::Result<Ocr> {
         let tags: Vec<String> = match prefer {
-            Some(p) if p.eq_ignore_ascii_case("zh") => ["zh-Hant-TW", "zh-TW", "zh-Hant-HK", "zh-HK", "zh-Hant", "zh-Hans-CN", "zh-CN", "zh-Hans"].iter().map(|t| t.to_string()).collect(),
+            Some(p) if p.eq_ignore_ascii_case("zh") || p.eq_ignore_ascii_case("zh-Hant") => [HANT, HANS].concat().iter().map(|t| t.to_string()).collect(),
+            // Simplified words: most likely a Simplified client, read with a Simplified reader when Windows has one
+            Some(p) if p.eq_ignore_ascii_case("zh-Hans") => [HANS, HANT].concat().iter().map(|t| t.to_string()).collect(),
             Some(p) => vec![p.to_string()],
             None => vec![],
         };
