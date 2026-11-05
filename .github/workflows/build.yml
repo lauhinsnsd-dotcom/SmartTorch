@@ -84,7 +84,12 @@ jobs:
             if ($in -and $line.Trim() -ne '') { $what += $line }
           }
           $whatText = ($what -join "`n")
+          # which file to take, first; the update note skips lines starting with > (every version, since v0.1.7)
           $notes = @"
+          > **下載哪個？** 一般請下載 **$zip**，解壓縮後點兩下 SmartTorch.exe（直接下載 SmartTorch.exe 也可以，是同一個程式）。vorax-overlay.exe 是給舊版自動更新用的，Source code 是 GitHub 自動附上的原始碼，都不用理會。
+          >
+          > **Which file?** Take **$zip**, unpack it and run SmartTorch.exe (SmartTorch.exe alone works too: the same program). vorax-overlay.exe is for older versions' updates, and Source code is added by GitHub: you need neither.
+
           $whatText
 
           SmartTorch：火炬之光：無限 的免費輔助工具箱（非官方）。下載下方的 $zip，解壓縮後點兩下 SmartTorch.exe。
