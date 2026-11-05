@@ -204,19 +204,22 @@ pub fn run(args: &[String]) {
     } else if !args.iter().any(|a| a == "--tray" || a == "--after-update") {
         window::open_hub_later(false);
     }
-    // a newer release on GitHub: offered in the tray menu
+    // a newer release on GitHub: looked for at the start and every 6 hours after (SmartTorch may run for days)
     let (check_tx, check_waker) = (to_ui.clone(), waker);
     std::thread::spawn(move || {
         unsafe {
             let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED);
         }
-        match update::check() {
-            Ok(Some(r)) => {
-                let _ = check_tx.send(window::ToUi::Update(r));
-                check_waker.wake();
+        loop {
+            match update::check() {
+                Ok(Some(r)) => {
+                    let _ = check_tx.send(window::ToUi::Update(r));
+                    check_waker.wake();
+                }
+                Ok(None) => sys::note(&format!("v{} is the latest release", update::current())),
+                Err(e) => sys::note(&format!("couldn't check for a newer release: {e}")),
             }
-            Ok(None) => sys::note(&format!("v{} is the latest release", update::current())),
-            Err(e) => sys::note(&format!("couldn't check for a newer release: {e}")),
+            std::thread::sleep(std::time::Duration::from_secs(6 * 60 * 60));
         }
     });
     let worker = std::thread::spawn(move || worker::run(opts, to_ui, waker, from_ui));

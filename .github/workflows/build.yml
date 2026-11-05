@@ -106,8 +106,14 @@ jobs:
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $zip SmartTorch\SmartTorch.exe vorax-overlay.exe --clobber
-            gh release edit $tag --notes-file notes.md
+            # a title left empty on the web page shows the last commit's message: the version instead
+            $title = gh release view $tag --json name -q .name
+            if ([string]::IsNullOrWhiteSpace($title)) {
+              gh release edit $tag --notes-file notes.md --title "$tag"
+            } else {
+              gh release edit $tag --notes-file notes.md
+            }
           } else {
-            gh release create $tag $zip SmartTorch\SmartTorch.exe vorax-overlay.exe --title "SmartTorch $tag" --notes-file notes.md
+            gh release create $tag $zip SmartTorch\SmartTorch.exe vorax-overlay.exe --title "$tag" --notes-file notes.md
           }
           exit $LASTEXITCODE

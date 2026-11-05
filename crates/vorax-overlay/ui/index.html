@@ -160,8 +160,15 @@ function nav() {
   const game = v && v.game.open;
   const lang = S ? S.lang : "tc";
   const opt = (id, label) => `<button class="${lang === id ? "on" : ""}" aria-pressed="${lang === id}" data-cmd="set" data-key="lang" data-value="${id}">${label}</button>`;
+  // a new version: by the language switch, on every page
+  const upd = S && S.updating != null
+    ? `<div class="note" style="color:var(--gold2)">${L("正在更新…", "Updating…")} ${Math.round(S.updating * 100)}%</div><div class="bar"><i style="width:${Math.round(S.updating * 100)}%"></i></div>`
+    : S && S.update
+    ? `<div class="note" style="color:var(--gold2)">${L("有新版本", "New version")} v${esc(S.update.version)}</div>
+       <div class="row" style="gap:6px"><button class="btn small gold" data-cmd="update">${L("立即更新", "Update now")}</button><button class="btn small" data-goto="general">${L("更新內容", "What's new")}</button></div>`
+    : "";
   document.getElementById("navfoot").innerHTML =
-    `<div class="row" style="font-size:13px;color:var(--soft);gap:8px">${dot(game ? "g" : "n")}${game ? L("遊戲已開啟", "Game is open") : L("遊戲未開啟", "Game not open")}</div>
+    `${upd}<div class="row" style="font-size:13px;color:var(--soft);gap:8px">${dot(game ? "g" : "n")}${game ? L("遊戲已開啟", "Game is open") : L("遊戲未開啟", "Game not open")}</div>
      <div class="note" style="font-size:12px;line-height:1.6">${L("完全免費 · 官方下載只有", "Free · only official download:")} <a href="#" data-url="${REPO}/releases">GitHub</a></div>
      <div class="seg" role="group" aria-label="Language" data-noconv>${opt("tc", "繁體")}${opt("sc", "简体")}${opt("en", "EN")}</div>`;
 }

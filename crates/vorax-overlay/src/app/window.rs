@@ -280,9 +280,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                             }
                         }
                         ToUi::Update(r) => {
+                            // offered by the tray once per version (it's looked for again every 6 hours)
+                            let new = s.update.as_ref().is_none_or(|u| u.version != r.version);
                             s.update = Some(r);
                             s.up_to_date = false;
-                            if !super::hub::shown() {
+                            if new && !super::hub::shown() {
                                 update_offer(s);
                             }
                         }
