@@ -87,7 +87,13 @@ mod tests {
         let zip = dir.join("t.zip");
         let files = vec![("記錄/overlay.log".to_string(), b"hello\n".to_vec()), ("a.png".to_string(), vec![0u8, 1, 2, 255])];
         super::write(&mut std::fs::File::create(&zip).unwrap(), &files).unwrap();
-        let Ok(out) = std::process::Command::new("unzip").arg("-o").arg("-q").arg(&zip).arg("-d").arg(&dir).output() else { return };
+        // Windows: its own tar (bsdtar), which reads UTF-8 names as Explorer does (Git's unzip doesn't)
+        let run = if cfg!(windows) {
+            std::process::Command::new("tar").arg("-xf").arg(&zip).arg("-C").arg(&dir).output()
+        } else {
+            std::process::Command::new("unzip").arg("-o").arg("-q").arg(&zip).arg("-d").arg(&dir).output()
+        };
+        let Ok(out) = run else { return };
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         assert_eq!(std::fs::read(dir.join("記錄/overlay.log")).unwrap(), b"hello\n");
         assert_eq!(std::fs::read(dir.join("a.png")).unwrap(), vec![0u8, 1, 2, 255]);
