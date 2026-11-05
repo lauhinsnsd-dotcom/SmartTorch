@@ -44,8 +44,11 @@ pub fn set_handler(f: OnMessage) {
     ON_MESSAGE.with(|h| *h.borrow_mut() = Some(f));
 }
 
+/// What each version changed, shown on the page's 版本紀錄 (up to this version)
+const CHANGELOG: &str = include_str!("../../../../CHANGELOG.md");
+
 fn page() -> String {
-    PAGE.replace("/*T2S*/{}", T2S)
+    PAGE.replace("/*T2S*/{}", T2S).replace("/*CHANGELOG*/\"\"", &serde_json::to_string(CHANGELOG).unwrap_or_else(|_| "\"\"".into()))
 }
 
 /// Shows the main window (made the first time), in front; `tab`: a page to open ("vorax", "settings:guide", ...).
