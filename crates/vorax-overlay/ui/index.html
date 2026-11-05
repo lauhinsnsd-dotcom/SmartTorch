@@ -207,7 +207,11 @@ function vorax() {
   }[lg.state] || [dot("n"), "—"];
   const how = lg.path ? (lg.manual ? L("（手動選擇）", " (chosen)") : L("（自動找到）", " (found)")) : "";
   const fix = (lg.state === "off" || lg.state === "missing") ? ` <button class="link" data-goto="help">${L("怎麼辦", "What to do")}</button>` : "";
-  const ocr = v.ocr === null ? `${dot("n")}${L("檢查中…", "Checking…")}` : v.ocr === false ? `${dot("r")}${L("未安裝：只能用卡面圖案辨認", "Not installed: cards are told by their pictures only")}` : `${dot("g")}${ocrName(v.ocr)}${L("已安裝", " installed")}`;
+  // Chinese words read a Chinese client: with no Chinese reader in Windows, its card names can't be read
+  const noZh = !en() && typeof v.ocr === "string" && !/^zh/i.test(v.ocr);
+  const ocr = v.ocr === null ? `${dot("n")}${L("檢查中…", "Checking…")}` : v.ocr === false ? `${dot("r")}${L("未安裝：只能用卡面圖案辨認", "Not installed: cards are told by their pictures only")}`
+    : noZh ? `${dot("y")}${L("Windows 沒有中文文字辨識，只能用卡面圖案辨認卡片", "")}`
+    : `${dot("g")}${ocrName(v.ocr)}${L("已安裝", " installed")}`;
   const last = v.last ? `${dot(v.last.warn ? "y" : "g")}${esc(v.last.text)}${P(ago(v.last.ago))}` : `${dot("n")}${L("尚未讀取", "Nothing read yet")}`;
   const st = v.stats;
   const modeName = v.mode === "mean" ? L("衝分", "push score") : L("原作者", "upstream's");

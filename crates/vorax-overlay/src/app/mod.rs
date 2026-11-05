@@ -21,6 +21,13 @@ use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
 use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 
+/// The language card titles are read in, from SmartTorch's interface language ("tc", "sc" or "en"): Chinese
+/// words, a Chinese client, read with a Chinese reader even when Windows also has an English one (v1.0.0 to 1.0.2
+/// read with the English one first, as the start files' --ocr-lang zh was gone); English with the English one.
+pub fn ocr_lang(lang: &str) -> Option<String> {
+    (lang != "en").then(|| "zh".to_string())
+}
+
 pub fn run(args: &[String]) {
     // Windows' shared COM area (the MTA) kept alive for the whole run, so a short-lived thread that used it can't
     // take it down under the factories the windows crate keeps cached
@@ -196,7 +203,7 @@ pub fn run(args: &[String]) {
     };
     // a log given on the command line (the old start files), else the one chosen in the main window
     let log = arg::<String>(args, "--log").map(PathBuf::from).or_else(|| settings.log_path.clone());
-    let opts = worker::Options { log, shelley: settings.shelley, ocr: settings.ocr, ocr_lang: arg::<String>(args, "--ocr-lang"), frames: arg::<String>(args, "--frames").map(PathBuf::from) };
+    let opts = worker::Options { log, shelley: settings.shelley, ocr: settings.ocr, ocr_lang: arg::<String>(args, "--ocr-lang").or_else(|| ocr_lang(&settings.lang)), frames: arg::<String>(args, "--frames").map(PathBuf::from) };
     waker.wake();
     // the main window at start, unless started with Windows (into the tray); the first-use steps the first time
     if !settings.first_run_done {

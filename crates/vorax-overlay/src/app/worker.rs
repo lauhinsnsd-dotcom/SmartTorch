@@ -15,7 +15,8 @@ pub struct Options {
     pub log: Option<PathBuf>,
     pub shelley: i32,
     pub ocr: bool,
-    /// --ocr-lang <tag>: the language card titles are read in ("zh" for a Chinese client)
+    /// the language card titles are read in: "zh" (any Chinese reader, for a Chinese client) or a tag such as
+    /// zh-Hant-TW; None for English. --ocr-lang, else SmartTorch's interface language.
     pub ocr_lang: Option<String>,
     /// --frames <dir>: every picture read is saved there, named by what came of it
     pub frames: Option<PathBuf>,
@@ -53,22 +54,7 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
             return;
         }
     };
-    let ocr = if opts.ocr {
-        match Ocr::with_language(opts.ocr_lang.as_deref()) {
-            Ok(o) => {
-                note(&format!("card titles read with Windows OCR ({}){}", o.language, if o.script() == vorax_scan::titles::Script::Han { ", matched to the cards' Chinese names" } else { "" }));
-                send(ToUi::Ocr(Some(o.language.clone())));
-                Some(o)
-            }
-            Err(e) => {
-                note(&format!("no Windows OCR ({e}): cards read by their pictures"));
-                send(ToUi::Ocr(None));
-                None
-            }
-        }
-    } else {
-        None
-    };
+    let mut ocr = if opts.ocr { make_ocr(opts.ocr_lang.as_deref(), &send) } else { None };
     if let Some(dir) = &opts.frames {
         note(&format!("saving every picture read to {}", dir.display()));
     }
@@ -118,6 +104,14 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
                     game_line_at = None;
                     game_log = None;
                     looked_for_log = Instant::now() - Duration::from_secs(60);
+                }
+                // the interface's language changed: card titles read in it from now on
+                ToWorker::OcrLang(lang) => {
+                    if opts.ocr && lang != opts.ocr_lang {
+                        opts.ocr_lang = lang;
+                        ocr = make_ocr(opts.ocr_lang.as_deref(), &send);
+                        pipe.script = ocr.as_ref().map_or(vorax_scan::titles::Script::Latin, |o| o.script());
+                    }
                 }
                 ToWorker::Mark => send(ToUi::Marked(super::report::mark(last_kept.as_deref()))),
                 ToWorker::Pause(on) => {
@@ -261,6 +255,22 @@ fn last_game_line_age(path: &Path) -> Option<Duration> {
 /// `label` names a read without a trigger in the log and the saved frames ("manual", "reread"). The toolbox: also
 /// where the picture was kept for a report.
 #[allow(clippy::too_many_arguments)]
+/// Windows' text reader in `lang` (or the nearest it has), told to the window.
+fn make_ocr(lang: Option<&str>, send: &dyn Fn(ToUi)) -> Option<Ocr> {
+    match Ocr::with_language(lang) {
+        Ok(o) => {
+            note(&format!("card titles read with Windows OCR ({}){}", o.language, if o.script() == vorax_scan::titles::Script::Han { ", matched to the cards' Chinese names" } else { "" }));
+            send(ToUi::Ocr(Some(o.language.clone())));
+            Some(o)
+        }
+        Err(e) => {
+            note(&format!("no Windows OCR ({e}): cards read by their pictures"));
+            send(ToUi::Ocr(None));
+            None
+        }
+    }
+}
+
 fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Option<&str>, label: &str, now: bool, quiet: bool, frames: Option<&Path>, send: &dyn Fn(ToUi)) -> (bool, bool, Option<PathBuf>) {
     let Some(game) = find_game_window() else {
         note("the game's window isn't open");

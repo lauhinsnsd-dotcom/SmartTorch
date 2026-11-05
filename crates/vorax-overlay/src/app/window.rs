@@ -81,6 +81,8 @@ pub enum ToWorker {
     Pause(bool),
     /// Ctrl+Alt+B: the last picture set aside for the report
     Mark,
+    /// the interface's language changed: the language card titles are read in (see `super::ocr_lang`)
+    OcrLang(Option<String>),
     Quit,
 }
 
@@ -873,6 +875,10 @@ fn from_hub(text: &str) {
                     s.settings.lang = lang.to_string();
                     s.settings.save();
                     s.stats = None;
+                    // card titles read in the new language (a Chinese client with Chinese words), unless --ocr-lang
+                    if crate::arg::<String>(&s.args, "--ocr-lang").is_none() {
+                        let _ = s.tx.send(ToWorker::OcrLang(super::ocr_lang(lang)));
+                    }
                     // the hint shown again in the new language
                     let _ = s.tx.send(ToWorker::Shelley(s.settings.shelley));
                     s.placed = None;
