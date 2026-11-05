@@ -11,6 +11,10 @@
 
 An unofficial, player-made tool, not affiliated with the game's makers. It only reads the game's picture and its log: **it never clicks or plays for you and never reads the game's memory**. Every move is yours. Whether to use third-party tools is your call.
 
+| 主視窗 · Main window（English） | 主視窗 · Main window（简体） |
+|---|---|
+| <img src="docs/window-en.png" alt="The main window in English: the Vorax helper's mode, Intern Shelley level and hotkeys"> | <img src="docs/window-sc.png" alt="主视窗（简体）：设置页，开机启动与随游戏自动启动"> |
+
 | 渴癮症 · Vorax | 囚獸 · Tartarus |
 |---|---|
 | <img src="docs/vorax-zh.jpg" alt="渴癮症：提示框建議卡牌與培養槽並顯示達 840k 機率，培養槽下方顯示讀到的內容 · Vorax: the suggested card and tank with the odds of reaching 840k, and what was read under each tank"> | <img src="docs/tartarus-zh.jpg" alt="囚獸：綠框為建議的下一步 · Tartarus: the green frame is the suggested move"> |
