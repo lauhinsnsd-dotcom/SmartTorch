@@ -35,9 +35,9 @@ pub struct Plan {
     /// the cards under the pill, and a mark under each tank's label
     pub read: Vec<String>,
     pub read_tanks: Vec<TankMark>,
-    /// the top of the "pick a potion" banner over the cards, in screen pixels: the cards read go just above it,
-    /// by the cards (else under the pill)
-    pub read_y: Option<f64>,
+    /// where the cards read go: over the cards' middle, right above the "pick a potion" banner (its top), in
+    /// screen pixels (else under the pill)
+    pub read_at: Option<(f64, f64)>,
 }
 
 /// What was read of one tank, shown under its label: "骨 15×12" in its rarity's colour (not in upstream).
@@ -287,7 +287,9 @@ pub fn plan_for(advice: &Advice, screen: &ScreenState, reading: &Reading, l: &La
         }
     }
     plan.read = read_cards(screen, size, &at, &missed, zh);
-    plan.read_y = Some(l.header.y);
+    // over the middle of the cards (the banner's words sit there), right above the banner
+    let mid = if pos.is_empty() { l.header.x + l.header.w / 2.0 } else { pos.iter().map(|c| c.cx).sum::<f64>() / pos.len() as f64 };
+    plan.read_at = Some((mid, l.header.y));
     plan.read_tanks = read_tanks(screen, l, &missed, zh);
     plan.read_tanks.extend(read_refresh(screen, reading.fields.get("refreshes").is_some_and(|f| f.sure), l, zh));
     if screen.phase == ScreenPhase::Protocol {
@@ -581,8 +583,8 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
         let bw = refs.iter().map(|t| measure(regular, t, px_)).fold(0.0f32, f32::max) + 2.0 * padx;
         let bh = line_h * refs.len() as f32 + 2.0 * pady;
         let under_pill = 14.0 * s + 46.0 * s + 8.0 * s;
-        let by = plan.read_y.map_or(under_pill, |y| (y as f32 - bh - 6.0 * s).max(under_pill));
-        let bx = (w as f32 - bw) / 2.0;
+        let by = plan.read_at.map_or(under_pill, |(_, y)| (y as f32 - bh - 6.0 * s).max(under_pill));
+        let bx = plan.read_at.map_or((w as f32 - bw) / 2.0, |(x, _)| (x as f32 - bw / 2.0).clamp(0.0, (w as f32 - bw).max(0.0)));
         let alpha = if plan.pill.as_ref().is_some_and(|p| p.dim) { 0.55 } else { 1.0 };
         if let Some(p) = rounded(bx, by, bw, bh, 10.0 * s) {
             pm.fill_path(&p, &paint(rgba(10, 8, 10, 0.82 * alpha)), FillRule::Winding, Transform::identity(), None);

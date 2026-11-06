@@ -850,7 +850,8 @@ fn draw(s: &State, (x, y, w, h): (i32, i32, i32, i32)) {
         t.w *= sx;
         t.h *= sy;
     }
-    if let Some(y) = &mut p.read_y {
+    if let Some((x, y)) = &mut p.read_at {
+        *x *= sx;
         *y *= sy;
     }
     let pm = render(&p, w as u32, h as u32, &s.fonts, crate::draw::accent(s.settings.accent));
