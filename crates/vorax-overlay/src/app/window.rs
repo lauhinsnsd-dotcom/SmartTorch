@@ -850,19 +850,8 @@ fn draw(s: &State, (x, y, w, h): (i32, i32, i32, i32)) {
         t.w *= sx;
         t.h *= sy;
     }
-    // not in upstream: a "？" over the card the picker asks about (shown whatever Ctrl+Alt+D says)
-    if let Some(a) = s.asks.first().filter(|_| s.ask_shown) {
-        let (afw, afh) = s.ask_frame;
-        if afw > 0 && afh > 0 {
-            let (ax, ay) = (w as f64 / afw as f64, h as f64 / afh as f64);
-            let k = afh as f64 / 1440.0;
-            let sc = (h as f64 / 1440.0).max(0.6);
-            let (cx, top) = (a.at.0 * ax, (a.at.1 - crate::draw::CARD_H * k / 2.0) * ay);
-            // the mark goes under `under`: it ends a little above the card's top
-            let under = vorax_scan::pixels::Rect::new(cx - 1.0, top - 44.0 * sc, 2.0, 1.0);
-            let text = if english() { "?".to_string() } else { crate::draw::ZH_UNKNOWN.to_string() };
-            p.read_tanks.push(crate::draw::TankMark { under, text, colour: crate::draw::UNREAD });
-        }
+    if let Some(y) = &mut p.read_y {
+        *y *= sy;
     }
     let pm = render(&p, w as u32, h as u32, &s.fonts, crate::draw::accent(s.settings.accent));
     unsafe { put(s.hwnd, x, y, w, h, pm.data()) };

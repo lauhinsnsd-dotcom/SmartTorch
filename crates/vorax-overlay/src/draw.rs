@@ -10,7 +10,7 @@ use vorax_scan::reading::{Problem, Reading};
 
 /// A card face in reference pixels (layout.ts CARD_FACE).
 const CARD_W: f64 = 230.0;
-pub(crate) const CARD_H: f64 = 340.0;
+const CARD_H: f64 = 340.0;
 
 #[derive(Clone, Debug, Default)]
 pub struct Pill {
@@ -35,6 +35,9 @@ pub struct Plan {
     /// the cards under the pill, and a mark under each tank's label
     pub read: Vec<String>,
     pub read_tanks: Vec<TankMark>,
+    /// the top of the "pick a potion" banner over the cards, in screen pixels: the cards read go just above it,
+    /// by the cards (else under the pill)
+    pub read_y: Option<f64>,
 }
 
 /// What was read of one tank, shown under its label: "骨 15×12" in its rarity's colour (not in upstream).
@@ -88,7 +91,7 @@ const ZH_NOT_FULLY: &str = "畫面未完全讀到";
 const ZH_NOT_IN_DATA: &str = "不在資料內，請自行判斷";
 const ZH_READ_CARDS: &str = "卡：";
 const ZH_EMPTY: &str = "空";
-pub(crate) const ZH_UNKNOWN: &str = "？";
+const ZH_UNKNOWN: &str = "？";
 const ZH_SEP: &str = "｜";
 const ZH_MEAN: &str = "平均";
 const ZH_TEN_THOUSAND: &str = "萬";
@@ -103,7 +106,7 @@ const MAGIC: (u8, u8, u8) = (110, 170, 255);
 const RARE: (u8, u8, u8) = (255, 200, 90);
 const BOSS: (u8, u8, u8) = (255, 95, 85);
 const EMPTY: (u8, u8, u8) = (150, 144, 144);
-pub(crate) const UNREAD: (u8, u8, u8) = (255, 150, 60);
+const UNREAD: (u8, u8, u8) = (255, 150, 60);
 
 /// A monster as its mark shows it: its kind in one word ("骨") and Activity × Quantity, in its rarity's colour.
 fn monster_mark(m: &vorax::advisor::ScreenMonster, zh: bool) -> (String, (u8, u8, u8)) {
@@ -284,6 +287,7 @@ pub fn plan_for(advice: &Advice, screen: &ScreenState, reading: &Reading, l: &La
         }
     }
     plan.read = read_cards(screen, size, &at, &missed, zh);
+    plan.read_y = Some(l.header.y);
     plan.read_tanks = read_tanks(screen, l, &missed, zh);
     plan.read_tanks.extend(read_refresh(screen, reading.fields.get("refreshes").is_some_and(|f| f.sure), l, zh));
     if screen.phase == ScreenPhase::Protocol {
@@ -567,7 +571,8 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
             text(&mut pm, regular, &rest, small, x + ow, base, (214, 206, 202), alpha);
         }
     }
-    // not in upstream: what was read, under the pill, in a box of its own
+    // not in upstream: what was read, just above the banner over the cards (else under the pill), in a box of its
+    // own
     if !plan.read.is_empty() {
         let refs: Vec<&str> = plan.read.iter().map(String::as_str).collect();
         let regular = &fonts.regular;
@@ -575,7 +580,9 @@ pub fn render(plan: &Plan, w: u32, h: u32, fonts: &Fonts, accent: (u8, u8, u8)) 
         let (line_h, padx, pady) = (24.0 * s, 14.0 * s, 8.0 * s);
         let bw = refs.iter().map(|t| measure(regular, t, px_)).fold(0.0f32, f32::max) + 2.0 * padx;
         let bh = line_h * refs.len() as f32 + 2.0 * pady;
-        let (bx, by) = ((w as f32 - bw) / 2.0, 14.0 * s + 46.0 * s + 8.0 * s);
+        let under_pill = 14.0 * s + 46.0 * s + 8.0 * s;
+        let by = plan.read_y.map_or(under_pill, |y| (y as f32 - bh - 6.0 * s).max(under_pill));
+        let bx = (w as f32 - bw) / 2.0;
         let alpha = if plan.pill.as_ref().is_some_and(|p| p.dim) { 0.55 } else { 1.0 };
         if let Some(p) = rounded(bx, by, bw, bh, 10.0 * s) {
             pm.fill_path(&p, &paint(rgba(10, 8, 10, 0.82 * alpha)), FillRule::Winding, Transform::identity(), None);
