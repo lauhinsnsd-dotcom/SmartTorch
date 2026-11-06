@@ -52,6 +52,12 @@ pub enum ToUi {
     Marked(Result<usize, String>),
     /// the toolbox: 囚獸助手's latest release (its version)
     TartLatest(String),
+    /// the picker: cards not made out on this board, for the player to pick (picture size)
+    Ask(Vec<crate::pipeline::Ask>, usize, usize),
+    /// the picker: the board changed (or all its cards are made out): its card closes
+    AskClose,
+    /// the picker: how many titles are learned
+    Learned(usize),
 }
 
 /// The game's log as the worker sees it.
@@ -83,6 +89,14 @@ pub enum ToWorker {
     Mark,
     /// the interface's language changed: the language card titles are read in (see `super::ocr_lang`)
     OcrLang(Option<String>),
+    /// the picker: the player picked this card for this place in the hand
+    Pick(usize, String),
+    /// the picker turned on or off
+    Picker(bool),
+    /// the picker: forget the learned titles
+    LearnedClear,
+    /// the picker's test on or off (the first card counts as not read)
+    TestPicker(bool),
     Quit,
 }
 
@@ -121,6 +135,11 @@ const MENU_UPDATE_NOW: u32 = 61;
 const MENU_RELEASE_PAGE: u32 = 62;
 /// the toolbox's main window
 const MENU_HUB: u32 = 70;
+/// the picker: card k of the candidates for place j is MENU_PICK + 8 j + k; all cards for place j in the main
+/// window is MENU_PICK_ALL + j; not picking, MENU_PICK_SKIP
+const MENU_PICK: u32 = 200;
+const MENU_PICK_ALL: u32 = 280;
+const MENU_PICK_SKIP: u32 = 290;
 /// the main window, opened from the message loop (never from inside the state's borrow)
 const WM_OPEN_HUB: u32 = WM_APP + 3;
 
@@ -168,6 +187,16 @@ struct State {
     tart_version: Option<(PathBuf, Option<String>)>,
     /// the game's window was open at the last tick (its opening and closing start and stop the tools)
     game_open: bool,
+    /// the picker: the cards not made out (and the picture size they were found on), the place whose every
+    /// card the main window lists, how many titles are learned
+    asks: Vec<crate::pipeline::Ask>,
+    ask_frame: (usize, usize),
+    pick_all: Option<usize>,
+    learned: usize,
+    /// the picker's test (Troubleshooting; not kept: off at each start)
+    test_picker: bool,
+    /// the picker's card has shown for these asks (else it shows once the game is in front)
+    ask_shown: bool,
 }
 
 thread_local! {
@@ -220,7 +249,7 @@ pub fn create(fonts: Fonts, rx: Receiver<ToUi>, to_self: Sender<ToUi>, tx: Sende
         super::hub::set_handler(from_hub);
         super::hub::set_close_handler(hub_closed);
         STATE.with(|s| {
-            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, show_read: true, to_self, update: None, updating: None, args, ocr: None, log_file: None, log_manual: false, last_read: None, running: true, up_to_date: false, stats: None, marked: super::report::marked(), report: None, tart: super::tartarus::Tart::default(), tart_latest: None, tart_version: None, game_open: find_game_window().is_some() });
+            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, show_read: true, to_self, update: None, updating: None, args, ocr: None, log_file: None, log_manual: false, last_read: None, running: true, up_to_date: false, stats: None, marked: super::report::marked(), report: None, tart: super::tartarus::Tart::default(), tart_latest: None, tart_version: None, game_open: find_game_window().is_some(), asks: Vec::new(), ask_frame: (0, 0), pick_all: None, learned: 0, test_picker: false, ask_shown: false });
         });
         // a 囚獸助手 left running hidden by a toolbox before this one (an update's restart): looked after again
         with_state(|s| s.tart.adopt());
@@ -310,6 +339,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                             }
                         }
                         ToUi::TartLatest(v) => s.tart_latest = Some(v),
+                        ToUi::Ask(asks, w, h) => {
+                            s.asks = asks;
+                            s.ask_frame = (w, h);
+                            s.ask_shown = false;
+                            show_picker(s);
+                        }
+                        ToUi::AskClose => {
+                            s.asks.clear();
+                            s.pick_all = None;
+                            super::menu::close_picker();
+                        }
+                        ToUi::Learned(n) => s.learned = n,
                         ToUi::Read(text, warn) => {
                             // a run may have just ended: count again
                             if text.starts_with("手術方案") || text.starts_with("Protocol") {
@@ -657,6 +698,25 @@ unsafe fn command(hwnd: HWND, id: u32) {
         }
         MENU_QUIT => quit(hwnd),
         MENU_HUB => super::hub::open(None),
+        c if (MENU_PICK..MENU_PICK_ALL).contains(&c) => {
+            let (slot, k) = (((c - MENU_PICK) / 8) as usize, ((c - MENU_PICK) % 8) as usize);
+            with_state(|s| {
+                let name = s.asks.iter().find(|a| a.slot == slot).and_then(|a| a.candidates.get(k).cloned());
+                if let Some(n) = name {
+                    picked(s, slot, n);
+                }
+            });
+        }
+        c if (MENU_PICK_ALL..MENU_PICK_SKIP).contains(&c) => {
+            let slot = (c - MENU_PICK_ALL) as usize;
+            with_state(|s| s.pick_all = Some(slot));
+            push_state();
+            let _ = PostMessageW(hwnd, WM_OPEN_HUB, WPARAM(0), LPARAM(0));
+        }
+        MENU_PICK_SKIP => {
+            with_state(|s| s.asks.clear());
+            focus_game();
+        }
         c if (MENU_SHELLEY + 1..=MENU_SHELLEY + 6).contains(&c) => {
             with_state(|s| set_shelley(s, (c - MENU_SHELLEY) as i32));
         }
@@ -672,8 +732,78 @@ unsafe fn command(hwnd: HWND, id: u32) {
     }
 }
 
+/// The picker's card (not in upstream): each card not made out, the cards it most likely is, all the cards of its
+/// kind (in the main window) and not picking; by the first such card, right of it, while the game is in front.
+fn show_picker(s: &mut State) {
+    if s.asks.is_empty() || !s.settings.picker.unwrap_or(true) {
+        return;
+    }
+    let Some(game) = find_game_window() else { return };
+    if foreground() != game {
+        return;
+    }
+    let Some((gx, gy, gw, gh)) = client_rect(game) else { return };
+    let (fw, fh) = s.ask_frame;
+    if fw == 0 || fh == 0 {
+        return;
+    }
+    let (sx, sy) = (gw as f64 / fw as f64, gh as f64 / fh as f64);
+    let mut rows: Vec<Row> = Vec::new();
+    for (i, a) in s.asks.iter().enumerate() {
+        if i > 0 {
+            rows.push(Row::Separator);
+        }
+        let n = a.slot + 1;
+        rows.push(Row::Header { title: if english() { format!("Card {n} not read") } else { format!("第 {n} 張卡讀不到") }, status: tr("選一張，下次會自動認出", "Pick it: it's known next time") });
+        let phase = if a.phase == "potion" { vorax::advisor::ScreenPhase::Potion } else { vorax::advisor::ScreenPhase::Instrument };
+        for (k, name) in a.candidates.iter().enumerate().take(6) {
+            let label = if english() { name.clone() } else { crate::draw::zh_name(phase, name) };
+            rows.push(Row::Action { id: MENU_PICK + 8 * a.slot as u32 + k as u32, label, shortcut: String::new() });
+        }
+        rows.push(Row::Action { id: MENU_PICK_ALL + a.slot as u32, label: tr("全部卡…", "All cards…"), shortcut: String::new() });
+    }
+    rows.push(Row::Separator);
+    rows.push(Row::Action { id: MENU_PICK_SKIP, label: tr("不選", "Skip"), shortcut: String::new() });
+    // right of the card, a card's half width over (the card is about 230 picture pixels wide at 2560x1440)
+    let a = &s.asks[0];
+    let half = 130.0 * fw as f64 / 2560.0;
+    let x = gx + ((a.at.0 + half) * sx) as i32;
+    let y = gy + (a.at.1 * sy) as i32;
+    super::menu::picker(s.hwnd, rows, s.fonts.clone(), x, y);
+    s.ask_shown = true;
+}
+
+/// The player picked a card for a place: the worker advises again with it (and learns it); the other cards not
+/// made out are asked again, else the game gets the focus back.
+fn picked(s: &mut State, slot: usize, name: String) {
+    let _ = s.tx.send(ToWorker::Pick(slot, name));
+    s.asks.retain(|a| a.slot != slot);
+    if s.pick_all == Some(slot) {
+        s.pick_all = None;
+    }
+    if s.asks.is_empty() {
+        focus_game();
+    } else {
+        focus_game();
+        show_picker(s);
+    }
+}
+
+/// The game in front again (after a pick in the picker's card or the main window).
+fn focus_game() {
+    if let Some(g) = find_game_window() {
+        unsafe {
+            let _ = SetForegroundWindow(g.get());
+        }
+    }
+}
+
 /// Keeps the overlay over the game's picture, shown only while the game is in front and there's advice.
 fn follow(s: &mut State) {
+    // the picker's card, asked while the game wasn't in front, once it is
+    if !s.ask_shown && !s.asks.is_empty() {
+        show_picker(s);
+    }
     let game = find_game_window();
     let front = game.is_some_and(|g| foreground() == g);
     let rect = game.and_then(client_rect);
@@ -787,6 +917,10 @@ fn state_json(s: &mut State) -> String {
             "rerolls": crate::pipeline::shelley_rerolls(s.settings.shelley),
             "shown": s.settings.shown,
             "showRead": s.show_read,
+            "picker": s.settings.picker.unwrap_or(true),
+            "learned": s.learned,
+            "pick": pick_json(s),
+            "testPicker": s.test_picker,
             "game": { "open": game.is_some(), "w": size.map(|x| x.0), "h": size.map(|x| x.1), "fullScreen": game.is_some() && super::sys::exclusive_full_screen() },
             "log": { "state": log, "path": s.log_file.as_ref().map(|p| p.display().to_string()), "manual": s.log_manual },
             "ocr": match &s.ocr { None => serde_json::Value::Null, Some(None) => serde_json::Value::Bool(false), Some(Some(l)) => serde_json::Value::String(l.clone()) },
@@ -798,6 +932,18 @@ fn state_json(s: &mut State) -> String {
         "tartarus": tartarus_json(s),
     })
     .to_string()
+}
+
+/// The picker: every card of the kind for a place not made out, for the main window's list (null when not asked).
+fn pick_json(s: &State) -> serde_json::Value {
+    let Some(slot) = s.pick_all else { return serde_json::Value::Null };
+    let Some(a) = s.asks.iter().find(|a| a.slot == slot) else { return serde_json::Value::Null };
+    let phase = if a.phase == "potion" { vorax::advisor::ScreenPhase::Potion } else { vorax::advisor::ScreenPhase::Instrument };
+    let names: Vec<serde_json::Value> = vorax_scan::titles::phase_names(vorax_scan::scan_data(), a.phase)
+        .iter()
+        .map(|n| serde_json::json!({ "en": n, "zh": crate::draw::zh_name(phase, n) }))
+        .collect();
+    serde_json::json!({ "slot": slot, "phase": a.phase, "names": names, "top": a.candidates })
 }
 
 /// Sends the main window the state as it is now (when it's open).
@@ -897,6 +1043,22 @@ fn from_hub(text: &str) {
                     s.settings.auto_etor = value.as_bool().unwrap_or(false);
                     s.settings.save();
                 }
+                "testPicker" => {
+                    s.test_picker = value.as_bool().unwrap_or(false);
+                    let _ = s.tx.send(ToWorker::TestPicker(s.test_picker));
+                    let _ = s.tx.send(ToWorker::Snap);
+                }
+                "picker" => {
+                    let on = value.as_bool().unwrap_or(true);
+                    s.settings.picker = Some(on);
+                    s.settings.save();
+                    let _ = s.tx.send(ToWorker::Picker(on));
+                    if !on {
+                        s.asks.clear();
+                        s.pick_all = None;
+                        super::menu::close_picker();
+                    }
+                }
                 _ => {}
             });
         }
@@ -934,6 +1096,25 @@ fn from_hub(text: &str) {
         }
         "runs" => {
             with_state(|s| super::logview::open(s.fonts.clone()));
+        }
+        // the picker: a card picked in the main window's list of all cards, or the list closed
+        "pick" => {
+            let slot = v["slot"].as_u64().unwrap_or(99) as usize;
+            let name = v["name"].as_str().unwrap_or("").to_string();
+            let ok = with_state(|s| s.asks.iter().any(|a| a.slot == slot) && !name.is_empty()).unwrap_or(false);
+            if ok {
+                with_state(|s| picked(s, slot, name));
+            }
+            with_state(|s| s.pick_all = None);
+        }
+        "pickClose" => {
+            with_state(|s| s.pick_all = None);
+        }
+        "learnedClear" => {
+            with_state(|s| {
+                let _ = s.tx.send(ToWorker::LearnedClear);
+                s.learned = 0;
+            });
         }
         "clearRecords" => {
             super::report::clear_all();

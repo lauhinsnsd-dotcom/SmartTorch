@@ -66,6 +66,16 @@ h2 { margin: 0; font-size: 16px; color: var(--gold2); }
 .sw i { width: 22px; height: 22px; border-radius: 50%; background: var(--bg); display: block; }
 .swrow { display: flex; align-items: center; gap: 12px; font-size: 14px; flex-wrap: wrap; }
 .note { color: var(--mute); font-size: 13px; }
+/* the picker's list of every card (a card not read) */
+#pick { position: fixed; inset: 0; background: rgba(8, 9, 12, 0.72); display: none; align-items: center; justify-content: center; z-index: 50; }
+#pick.on { display: flex; }
+.pickbox { width: min(560px, 92vw); max-height: 86vh; display: flex; flex-direction: column; gap: 12px; background: var(--card); border: 1px solid var(--line2); border-radius: 14px; padding: 20px; box-sizing: border-box; }
+.pickbox input { font: inherit; font-size: 15px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line2); background: var(--bg); color: var(--text); }
+.picklist { overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.picklist button { text-align: left; font: inherit; font-size: 15px; padding: 10px 12px; min-height: 44px; border-radius: 8px; border: 1px solid transparent; background: var(--card2); color: var(--text); cursor: pointer; }
+.picklist button:hover, .picklist button:focus-visible { border-color: var(--gold); outline: none; }
+.picklist button.top { color: var(--gold2); }
+.picklist .en { color: var(--mute); font-size: 13px; margin-left: 8px; }
 .keys { display: grid; grid-template-columns: 140px minmax(0, 1fr); row-gap: 6px; font-size: 13px; color: var(--soft); border-top: 1px solid var(--line); padding-top: 14px; }
 .keys .kk { color: var(--text); }
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
@@ -111,6 +121,7 @@ input.mono, .ccode { font-family: Consolas, "Cascadia Mono", monospace; }
   </nav>
   <main id="main"></main>
 </div>
+<div id="pick"></div>
 <script>
 "use strict";
 // Traditional → Simplified, character by character (OpenCC, made by dev/make_ui_t2s.py), after the words that
@@ -260,6 +271,7 @@ function vorax() {
       ${[1, 2, 3, 4, 5, 6].map((n) => `<button class="pill ${v.shelley === n ? "on" : ""}" data-cmd="set" data-key="shelley" data-value="${n}">${n}</button>`).join("")}
     </div></div>
     <div class="swrow">${sw(v.shown, "set", "shown", L("顯示提示", "Show hints"))}<span>${L("顯示提示", "Show hints")}</span><span class="note">Ctrl + Alt + V</span></div>
+    <div class="swrow">${sw(v.picker, "set", "picker", L("讀不到卡時讓我手動選", "Let me pick a card not read"))}<span>${L("讀不到卡時讓我手動選", "Let me pick a card not read")}</span><span class="note">${v.learned ? L(`已學會 ${v.learned} 個卡名`, `${v.learned} title${v.learned === 1 ? "" : "s"} learned`) : L("選過的卡，下次會自動認出", "a card picked is known next time")}</span>${v.learned ? `<button class="btn small" data-confirm="learnedClear">${L("清除已學的卡", "Forget them")}</button>` : ""}</div>
     <div class="swrow">${sw(v.showRead, "set", "showRead", L("顯示讀取結果", "Show what was read"))}<span>${L("顯示讀取結果", "Show what was read")}</span><span class="note">${L("培養槽下方小框、卡一行、刷新次數", "under each tank, the cards, the rerolls")}</span></div>
     <div class="keys">
       <div class="kk">Ctrl + Alt + X</div><div>${L("立即讀取一次畫面", "Read the board now")}</div>
@@ -364,7 +376,11 @@ function help() {
     [L("卡片常常「未讀到」", "Cards often not read"), L("SmartTorch 的語言要和遊戲相同：中文遊戲用繁體或简体，英文遊戲用 English（「設定 › 一般」），因為卡名是用 SmartTorch 語言的文字辨識讀取。「文字辨識」那一行是黃點時，Windows 沒有中文文字辨識，卡片只能靠圖案辨認：請在 Windows「設定 › 時間與語言 › 語言與地區」新增中文。", "SmartTorch's language should match the game's: English for an English client, Traditional or Simplified Chinese for a Chinese one (Settings › General), as card names are read in SmartTorch's language. A yellow dot on Text reading means Windows has no Chinese text recognition and cards are told by their pictures only: add Chinese in Windows' Settings › Time & language › Language & region.")],
     [L("遊戲是獨佔全螢幕", "The game is in exclusive full screen"), L("提示無法疊在獨佔全螢幕上。請在遊戲設定把顯示模式改為「無邊框」或「視窗」。", "The hints can't show over exclusive full screen. Switch the game's display mode to borderless or windowed.")],
   ];
-  return items.map(([t, b]) => `<div class="problem"><b>${dot("r")}${t}</b><p>${esc(b)}</p></div>`).join("");
+  const v = S.vorax;
+  // the picker's test: every board's first card counts as not read, so the picker can be tried at once
+  const test = `<div class="problem"><b>${L("測試手動選卡", "Try the card picker")}</b><p>${esc(L("開啟後，每個畫面的第 1 張卡都會當作讀不到，馬上彈出選卡框，方便試用。試完請關閉（重開 SmartTorch 也會自動關閉）。", "While on, every board's first card counts as not read, so the picker comes up at once. Turn it off after (it's off again when SmartTorch restarts)."))}</p>
+    <div class="swrow">${sw(v.testPicker, "set", "testPicker", L("測試手動選卡", "Try the card picker"))}<span>${v.testPicker ? L("測試中", "On") : L("關閉", "Off")}</span></div></div>`;
+  return items.map(([t, b]) => `<div class="problem"><b>${dot("r")}${t}</b><p>${esc(b)}</p></div>`).join("") + test;
 }
 
 function about() {
@@ -546,9 +562,12 @@ document.addEventListener("click", (e) => {
   if (t.dataset.goto) { page = "settings"; tab = t.dataset.goto; render(); document.getElementById("main").scrollTop = 0; return; }
   if (t.dataset.url) { send({ cmd: "open", url: t.dataset.url }); return; }
   if (t.dataset.code) { codeAction(t.dataset.code, Number(t.dataset.i)); return; }
+  if (t.dataset.pickName !== undefined) { send({ cmd: "pick", slot: Number(t.dataset.pickSlot), name: t.dataset.pickName }); closePick(); return; }
+  if (t.dataset.pickClose !== undefined) { send({ cmd: "pickClose" }); closePick(); return; }
   if (t.dataset.confirm) {
     const words = {
       clearRecords: L("清除紀錄？對局紀錄、統計、記錄檔和記下的畫面都會刪除，之後從零開始。（有問題要回報的話，請先按「回報問題」再清除。）", "Clear records? Your runs, the statistics, the log and the pictures set aside are deleted, and it starts from zero. (Report a problem first if you have one.)"),
+      learnedClear: L("清除已學的卡？之前手動選過的卡名會忘記，下次讀不到時要再選。", "Forget the learned titles? Cards picked before will be asked again."),
       markedClear: L("清除記下的畫面？（回報問題後會自動清除，平常不必手動清除）", "Throw away the pictures set aside? (Reporting a problem clears them by itself.)"),
       tartarusReset: L("重設囚獸助手的統計？SmartTorch 之後只計算從現在開始的局數（囚獸助手自己的紀錄不會改動）。", "Reset the Tartarus statistics? SmartTorch counts from now on (Tartarus Solver's own record isn't touched)."),
     }[t.dataset.confirm];
@@ -648,10 +667,48 @@ document.addEventListener("dragend", () => {
   document.querySelectorAll(".crow.drag, .crow.over").forEach((x) => x.classList.remove("drag", "over"));
 });
 
+// the picker: every card of the kind for a card not read, to search and pick from (drawn once for each ask, so
+// what's typed stays while the state comes every few seconds)
+let pickDrawn = "";
+function closePick() {
+  const box = document.getElementById("pick");
+  if (box) box.classList.remove("on");
+  pickDrawn = "";
+}
+function drawPick() {
+  const pk = S && S.vorax && S.vorax.pick;
+  const box = document.getElementById("pick");
+  if (!box) return;
+  if (!pk) { if (pickDrawn) closePick(); return; }
+  const key = pk.slot + ":" + pk.phase + ":" + S.lang;
+  if (pickDrawn === key) return;
+  pickDrawn = key;
+  const shown = (n) => (en() ? n.en : n.zh);
+  const top = pk.top || [];
+  const names = pk.names.slice().sort((a, b) => (top.indexOf(a.en) < 0 ? 99 : top.indexOf(a.en)) - (top.indexOf(b.en) < 0 ? 99 : top.indexOf(b.en)));
+  box.innerHTML = `<div class="pickbox" role="dialog" aria-modal="true" aria-labelledby="pickh">
+    <div class="row" style="justify-content:space-between"><h2 id="pickh">${L(`第 ${pk.slot + 1} 張卡是哪一張？`, `Which is card ${pk.slot + 1}?`)}</h2><button class="btn small" data-pick-close="">${L("關閉", "Close")}</button></div>
+    <label class="note" for="pickq">${L("輸入卡名的一兩個字搜尋；選過的卡下次會自動認出", "Type part of its name; a card picked is known next time")}</label>
+    <input id="pickq" type="search" autocomplete="off" placeholder="${L("搜尋卡名", "Search")}">
+    <div class="picklist">${names.map((n) => `<button class="${top.includes(n.en) ? "top" : ""}" data-pick-slot="${pk.slot}" data-pick-name="${esc(n.en)}" data-q="${esc((n.zh + " " + toSc(n.zh) + " " + n.en).toLowerCase())}">${esc(shown(n))}${en() ? "" : `<span class="en">${esc(n.en)}</span>`}</button>`).join("")}</div>
+  </div>`;
+  if (S.lang === "sc") convert(box);
+  box.classList.add("on");
+  const q = document.getElementById("pickq");
+  q.addEventListener("input", () => {
+    const w = q.value.trim().toLowerCase();
+    box.querySelectorAll(".picklist button").forEach((b) => { b.style.display = !w || b.dataset.q.includes(w) ? "" : "none"; });
+  });
+  q.focus();
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && pickDrawn) { send({ cmd: "pickClose" }); closePick(); }
+});
+
 window.chrome && window.chrome.webview && window.chrome.webview.addEventListener("message", (e) => {
   const m = e.data;
   if (!m) return;
-  if (m.type === "state") { S = m; render(); }
+  if (m.type === "state") { S = m; render(); drawPick(); }
   else if (m.type === "codes") { CODES = Array.isArray(m.list) ? m.list : []; if (page === "codes") drawCodes(); }
 
   else if (m.type === "tab") {

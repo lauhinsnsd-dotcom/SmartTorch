@@ -208,7 +208,7 @@ fn end_in(e: &vorax::advisor::End, zh: bool) -> String {
 }
 
 /// A card's name as a Chinese client prints it (the first of its forms in names_zh.json), else as the data has it.
-fn zh_name(phase: ScreenPhase, name: &str) -> String {
+pub(crate) fn zh_name(phase: ScreenPhase, name: &str) -> String {
     let z = &vorax_scan::scan_data().names_zh;
     let names = match phase {
         ScreenPhase::Potion => &z.potion,

@@ -20,6 +20,8 @@ pub struct Options {
     pub ocr_lang: Option<String>,
     /// --frames <dir>: every picture read is saved there, named by what came of it
     pub frames: Option<PathBuf>,
+    /// the picker: a card not made out after the rereads is asked of the player
+    pub picker: bool,
 }
 
 /// How long after a pick the board is looked at again, for the new icon to have landed in the panel.
@@ -65,6 +67,11 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
     let mut paused = false;
     let mut pipe = Pipeline::new(opts.shelley);
     pipe.script = ocr.as_ref().map_or(vorax_scan::titles::Script::Latin, |o| o.script());
+    // the picker: the titles learned from the player's picks, and the board last asked about
+    pipe.learned = crate::learn::Learned::load(&super::sys::data_dir().join("learned.json"));
+    send(ToUi::Learned(pipe.learned.count()));
+    let mut picker = opts.picker;
+    let mut asked = String::new();
     let mut follower: Option<Follower> = None;
     let mut looked_for_log = Instant::now() - Duration::from_secs(60);
     let mut settler = Settler::default();
@@ -114,6 +121,26 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
                     }
                 }
                 ToWorker::Mark => send(ToUi::Marked(super::report::mark(last_kept.as_deref()))),
+                ToWorker::Pick(slot, name) => {
+                    if let Some((plan, w, h)) = pipe.pick(slot, &name) {
+                        note(&format!("card {} picked by the player: {name} (learned for its title)", slot + 1));
+                        send(ToUi::Show(plan, w, h));
+                        if let Some(r) = pipe.last_reading() {
+                            send(ToUi::Read(summary(r), !crate::draw::not_read(r).is_empty()));
+                        }
+                        send(ToUi::Learned(pipe.learned.count()));
+                    }
+                }
+                ToWorker::Picker(on) => picker = on,
+                ToWorker::TestPicker(on) => {
+                    pipe.test_unknown = on;
+                    note(if on { "the picker's test: the first card counts as not read" } else { "the picker's test is off" });
+                }
+                ToWorker::LearnedClear => {
+                    pipe.learned.clear();
+                    note("the learned card titles were cleared");
+                    send(ToUi::Learned(0));
+                }
                 ToWorker::Pause(on) => {
                     paused = on;
                     if on {
@@ -218,6 +245,25 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
                 reread_at = Some(Instant::now() + REREAD);
             } else if missed && only_reread {
                 note(&format!("still not fully read after {REREADS} more reads: Ctrl+Alt+X reads it again"));
+            }
+            // not in upstream: a card still not made out after the rereads is asked of the player (once a board;
+            // Ctrl+Alt+X asks again); the card closes when the board changes
+            if !animating {
+                if manual {
+                    asked.clear();
+                }
+                let want = picker && missed && !pipe.asks.is_empty();
+                if !asked.is_empty() && (!want || pipe.ask_key != asked) {
+                    asked.clear();
+                    send(ToUi::AskClose);
+                }
+                if want && reread_at.is_none() && pipe.ask_key != asked {
+                    if let Some((w, h)) = pipe.last_size() {
+                        asked = pipe.ask_key.clone();
+                        note(&format!("asking the player: {}", pipe.asks.iter().map(|a| format!("card {} [{}] → {:?}", a.slot + 1, a.text.replace('\n', " / "), a.candidates)).collect::<Vec<_>>().join("; ")));
+                        send(ToUi::Ask(pipe.asks.clone(), w, h));
+                    }
+                }
             }
             if !animating || quiet {
                 retries = 0;

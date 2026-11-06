@@ -304,6 +304,35 @@ pub fn word_pick(names: &[String], text: &str) -> Option<String> {
     }
 }
 
+/// not in upstream: the cards a title not made out most likely is, for the player to pick from (the toolbox's
+/// picker): the names its text fits best and the pictures' best, taken by turns, `n` at most.
+pub fn candidates(data: &ScanData, phase: &str, text: &str, script: Script, pictures: &[(String, f64)], n: usize) -> Vec<String> {
+    let names = names_for(data, phase);
+    let by_text: Vec<String> = if text.trim().is_empty() {
+        Vec::new()
+    } else {
+        let r = if script == Script::Han { ranked_in(data, phase, text, script) } else { ranked(data, phase, text) };
+        r.into_iter().filter(|(_, q)| *q > 0.0).map(|(name, _)| name).collect()
+    };
+    let by_picture: Vec<String> = pictures.iter().map(|(name, _)| name.clone()).filter(|name| names.contains(name)).collect();
+    let mut out: Vec<String> = Vec::new();
+    for k in 0..by_text.len().max(by_picture.len()) {
+        for list in [&by_text, &by_picture] {
+            if let Some(name) = list.get(k) {
+                if out.len() < n && !out.contains(name) {
+                    out.push(name.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// not in upstream: every card of a kind of pick (`"potion"`, `"instrument"`), in the data's order.
+pub fn phase_names<'a>(data: &'a ScanData, phase: &str) -> &'a [String] {
+    names_for(data, phase)
+}
+
 fn names_for<'a>(data: &'a ScanData, phase: &str) -> &'a [String] {
     match phase {
         "potion" => &data.names.potion,

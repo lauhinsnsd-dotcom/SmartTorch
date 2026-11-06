@@ -209,7 +209,7 @@ pub fn run(args: &[String]) {
     };
     // a log given on the command line (the old start files), else the one chosen in the main window
     let log = arg::<String>(args, "--log").map(PathBuf::from).or_else(|| settings.log_path.clone());
-    let opts = worker::Options { log, shelley: settings.shelley, ocr: settings.ocr, ocr_lang: arg::<String>(args, "--ocr-lang").or_else(|| ocr_lang(&settings.lang)), frames: arg::<String>(args, "--frames").map(PathBuf::from) };
+    let opts = worker::Options { log, shelley: settings.shelley, ocr: settings.ocr, ocr_lang: arg::<String>(args, "--ocr-lang").or_else(|| ocr_lang(&settings.lang)), frames: arg::<String>(args, "--frames").map(PathBuf::from), picker: settings.picker.unwrap_or(true) };
     waker.wake();
     // the main window at start, unless started with Windows (into the tray); the first-use steps the first time
     if !settings.first_run_done {

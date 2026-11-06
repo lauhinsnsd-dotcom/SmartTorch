@@ -48,6 +48,15 @@ struct Menu {
     s: f32,
     /// the row and, on the levels row, the level under the mouse
     hover: Option<(usize, Option<i32>)>,
+    /// the picker's card (a card not read), which closes by itself when the board changes
+    picker: bool,
+}
+
+/// Where a card opens: by the cursor, in the tray's corner, or at a place (the picker: by the card not read).
+enum Place {
+    Cursor,
+    Tray,
+    At(POINT),
 }
 
 thread_local! {
@@ -385,16 +394,31 @@ pub fn refresh(rows: Vec<Row>) -> bool {
 
 /// Opens the menu by the cursor (above it, as the tray sits at the bottom), on top and focused.
 pub fn open(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>) {
-    show(owner, rows, fonts, false);
+    show(owner, rows, fonts, Place::Cursor);
+}
+
+/// The picker's card (not in upstream): its left edge at `x`, its middle at `y` (screen pixels), kept on the
+/// screen, on top without taking the focus from the game.
+pub fn picker(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, x: i32, y: i32) {
+    show(owner, rows, fonts, Place::At(POINT { x, y }));
+    with(|m| m.picker = true);
+}
+
+/// Closes the picker's card, if it's the one open.
+pub fn close_picker() {
+    if with(|m| m.picker).unwrap_or(false) {
+        close();
+    }
 }
 
 /// Opens a card by itself, in the main screen's corner by the tray, on top but without taking the focus (the
 /// game keeps it): a click on it or its button still answers, and clicking elsewhere after that closes it.
 pub fn notify(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>) {
-    show(owner, rows, fonts, true);
+    show(owner, rows, fonts, Place::Tray);
 }
 
-fn show(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, by_tray: bool) {
+fn show(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, place: Place) {
+    let by_tray = !matches!(place, Place::Cursor);
     close();
     unsafe {
         let Ok(instance) = GetModuleHandleW(None) else { return };
@@ -403,21 +427,29 @@ fn show(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, by_tray: bool) {
         RegisterClassW(&wc);
         let mut cur = POINT::default();
         let _ = GetCursorPos(&mut cur);
-        let mon = if by_tray { MonitorFromPoint(POINT::default(), MONITOR_DEFAULTTOPRIMARY) } else { MonitorFromPoint(cur, MONITOR_DEFAULTTONEAREST) };
+        let mon = match place {
+            Place::Tray => MonitorFromPoint(POINT::default(), MONITOR_DEFAULTTOPRIMARY),
+            Place::Cursor => MonitorFromPoint(cur, MONITOR_DEFAULTTONEAREST),
+            Place::At(p) => MonitorFromPoint(p, MONITOR_DEFAULTTONEAREST),
+        };
         let (mut dx, mut dy) = (96u32, 96u32);
         let _ = GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &mut dx, &mut dy);
         let s = dx as f32 / 96.0;
         let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
         let _ = GetMonitorInfoW(mon, &mut mi);
         let work = mi.rcWork;
-        let mut m = Menu { hwnd: HWND::default(), owner, rows, fonts, s, hover: None };
+        let mut m = Menu { hwnd: HWND::default(), owner, rows, fonts, s, hover: None, picker: false };
         let pm = render(&m);
         let (w, h) = (pm.width() as i32, pm.height() as i32);
         // the card's corner at the cursor (or the work area's), kept inside the screen's work area
         let margin = (MARGIN * s) as i32;
-        let at = if by_tray { POINT { x: work.right, y: work.bottom } } else { cur };
-        let x = (at.x - w + margin).clamp(work.left, work.right - w);
-        let y = (at.y - h + margin).clamp(work.top, work.bottom - h);
+        let (x, y) = match place {
+            Place::At(p) => (p.x.clamp(work.left, work.right - w), (p.y - h / 2).clamp(work.top, work.bottom - h)),
+            _ => {
+                let at = if by_tray { POINT { x: work.right, y: work.bottom } } else { cur };
+                ((at.x - w + margin).clamp(work.left, work.right - w), (at.y - h + margin).clamp(work.top, work.bottom - h))
+            }
+        };
         let Ok(hwnd) = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW, class, w!("Vorax menu"), WS_POPUP, x, y, w, h, None, None, instance, None) else { return };
         m.hwnd = hwnd;
         put(hwnd, x, y, w, h, pm.data());
@@ -551,5 +583,5 @@ pub unsafe fn put(hwnd: HWND, x: i32, y: i32, w: i32, h: i32, rgba: &[u8]) {
 
 /// The menu drawn into a picture (for checking its look without opening it): `hover` lights that row.
 pub fn preview(rows: Vec<Row>, fonts: Rc<Fonts>, s: f32, hover: Option<(usize, Option<i32>)>) -> Pixmap {
-    render(&Menu { hwnd: HWND::default(), owner: HWND::default(), rows, fonts, s, hover })
+    render(&Menu { hwnd: HWND::default(), owner: HWND::default(), rows, fonts, s, hover, picker: false })
 }

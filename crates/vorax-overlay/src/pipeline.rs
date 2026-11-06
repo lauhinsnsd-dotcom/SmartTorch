@@ -32,6 +32,21 @@ pub enum Outcome {
     Advice { reading: Box<Reading>, advice: Box<Advice>, plan: Plan, read_ms: f64 },
 }
 
+/// A card the reader didn't make out, for the player to pick (the toolbox's picker; not in upstream).
+#[derive(Clone, Debug)]
+pub struct Ask {
+    /// its place in the hand, 0-based
+    pub slot: usize,
+    /// the kind of pick: "potion" or "instrument"
+    pub phase: &'static str,
+    /// what the text reader made of its title
+    pub text: String,
+    /// the cards it most likely is (English names), best first
+    pub candidates: Vec<String>,
+    /// the card's middle, in the picture's pixels
+    pub at: (f64, f64),
+}
+
 pub struct Pipeline {
     pub tracker: InstrumentTracker,
     pub shelley: i32,
@@ -49,6 +64,15 @@ pub struct Pipeline {
     pub resumed: bool,
     /// the writing the card titles are read in (a Chinese client's: matched to the cards' Chinese names)
     pub script: Script,
+    /// the picker (not in upstream): cards picked by the player for this board (`pick_key`), the titles' texts
+    /// learned from earlier picks, and the cards still not made out on the last board
+    picks: std::collections::BTreeMap<usize, String>,
+    pick_key: String,
+    pub learned: crate::learn::Learned,
+    pub asks: Vec<Ask>,
+    pub ask_key: String,
+    /// the picker's test (Troubleshooting): the first card counts as not read, its title half read
+    pub test_unknown: bool,
 }
 
 /// Whether the screen opening is the game under way going on rather than a new one, from the round of the board
@@ -69,7 +93,7 @@ pub fn shelley_rerolls(level: i32) -> i32 {
 
 impl Pipeline {
     pub fn new(shelley: i32) -> Pipeline {
-        Pipeline { tracker: InstrumentTracker::default(), shelley, instrument_refreshes: None, last: None, protocols: false, resumed: false, script: Script::Latin }
+        Pipeline { tracker: InstrumentTracker::default(), shelley, instrument_refreshes: None, last: None, protocols: false, resumed: false, script: Script::Latin, picks: Default::default(), pick_key: String::new(), learned: Default::default(), asks: Vec::new(), ask_key: String::new(), test_unknown: false }
     }
 
     /// The board's instrument rerolls: as read on an instrument offer, else carried from the last one this game,
@@ -90,6 +114,133 @@ impl Pipeline {
     }
 
     /// The last board advised again (the Shelley level changed): its marks, for a picture of this size.
+    /// The cards on the last board not made out, by place (a card the data doesn't have isn't one).
+    fn unknown_slots(reading: &Reading) -> Vec<(usize, String)> {
+        let data = scan_data();
+        reading
+            .problems
+            .iter()
+            .filter_map(|p| match p {
+                Problem::UnknownArt { field, text, .. } => {
+                    let j = field.strip_prefix("hand")?.parse::<usize>().ok()?;
+                    let t = text.clone().unwrap_or_default();
+                    vorax_scan::titles::han_unsupported(data, &t).is_none().then_some((j, t))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn phase_of(reading: &Reading) -> Option<&'static str> {
+        match reading.state.phase {
+            vorax::advisor::ScreenPhase::Potion => Some("potion"),
+            vorax::advisor::ScreenPhase::Instrument => Some("instrument"),
+            vorax::advisor::ScreenPhase::Protocol => None,
+        }
+    }
+
+    /// Which board this is, for keeping the player's picks while it stays: the round, the kind of pick, the
+    /// rerolls left, the cards made out and the places not.
+    fn board_key(reading: &Reading, unknown: &[(usize, String)]) -> String {
+        let st = &reading.state;
+        let slots: Vec<usize> = unknown.iter().map(|(j, _)| *j).collect();
+        format!("{:?}|{:?}|{:?}|{:?}|{:?}|{:?}", st.round, st.phase, st.potion_refreshes, st.instrument_refreshes, st.hand, slots)
+    }
+
+    /// A card picked (or learned) for place `slot`: in the hand in its place, no longer "not read".
+    fn put_card(reading: &mut Reading, slot: usize, name: &str) {
+        let key = format!("hand{slot}");
+        let unknown: Vec<usize> = Self::unknown_slots(reading).iter().map(|(j, _)| *j).collect();
+        if !unknown.contains(&slot) {
+            return;
+        }
+        // the hand lists the cards made out in their order: this one goes after those left of it
+        let size = reading.hand_ranks.as_ref().map(|r| r.len()).filter(|&n| n > 0).or(reading.hand_size).unwrap_or(3);
+        let all_unknown: Vec<usize> = reading.problems.iter().filter_map(|p| match p {
+            Problem::UnknownArt { field, .. } => field.strip_prefix("hand").and_then(|j| j.parse::<usize>().ok()),
+            _ => None,
+        }).collect();
+        let at = (0..slot.min(size)).filter(|j| !all_unknown.contains(j)).count();
+        reading.problems.retain(|p| !matches!(p, Problem::UnknownArt { field, .. } if *field == key));
+        let at = at.min(reading.state.hand.len());
+        reading.state.hand.insert(at, name.to_string());
+        reading.fields.insert(key, vorax_scan::reading::FieldRead { sure: false, guess: Some(name.to_string()), ..Default::default() });
+    }
+
+    /// The picker's test: the first card taken out as not read, with its title half read (a character or a word
+    /// dropped), as a card the reader missed would be.
+    fn hide_first(&self, reading: &mut Reading) {
+        if Self::phase_of(reading).is_none() || reading.state.hand.is_empty() || reading.problems.iter().any(|p| matches!(p, Problem::UnknownArt { field, .. } if field == "hand0")) {
+            return;
+        }
+        let name = reading.state.hand.remove(0);
+        let text = if self.script == Script::Han {
+            let zh: Vec<char> = crate::draw::zh_name(reading.state.phase, &name).chars().collect();
+            zh.iter().enumerate().filter(|(i, _)| *i != 1).map(|(_, c)| *c).collect::<String>()
+        } else {
+            name.split(' ').skip(1).collect::<Vec<_>>().join(" ")
+        };
+        reading.fields.remove("hand0");
+        reading.problems.push(Problem::UnknownArt { field: "hand0".into(), crop: vorax_scan::pixels::Rect::new(0.0, 0.0, 1.0, 1.0), hand: None, text: Some(text) });
+    }
+
+    /// The player's picks for this board, and cards learned from earlier picks, put in; what's still not made out
+    /// becomes `asks`.
+    fn fill_picks(&mut self, reading: &mut Reading, w: usize, h: usize) {
+        self.asks.clear();
+        let Some(phase) = Self::phase_of(reading) else { return };
+        let unknown = Self::unknown_slots(reading);
+        if unknown.is_empty() {
+            return;
+        }
+        let key = Self::board_key(reading, &unknown);
+        if key != self.pick_key {
+            self.picks.clear();
+        }
+        for (j, text) in &unknown {
+            let name = self.picks.get(j).cloned().or_else(|| self.learned.get(phase, text));
+            if let Some(n) = name {
+                Self::put_card(reading, *j, &n);
+            }
+        }
+        let size = reading.hand_ranks.as_ref().map(|r| r.len()).filter(|&n| n > 0).or(reading.hand_size).unwrap_or(3);
+        let pos = layout_at(w, h, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0)).hand_at(size).to_vec();
+        for (j, text) in Self::unknown_slots(reading) {
+            let pictures = reading.hand_ranks.as_ref().and_then(|r| r.get(j)).cloned().unwrap_or_default();
+            let candidates = vorax_scan::titles::candidates(scan_data(), phase, &text, self.script, &pictures, 4);
+            let at = pos.get(j).map_or((w as f64 / 2.0, h as f64 / 2.0), |c| (c.cx, c.cy));
+            self.asks.push(Ask { slot: j, phase, text, candidates, at });
+        }
+        self.ask_key = key;
+    }
+
+    /// The player picked `name` for the card at `slot` on the last board: kept while the board stays, learned for
+    /// its title's text, and the advice given again with it.
+    pub fn pick(&mut self, slot: usize, name: &str) -> Option<(Plan, usize, usize)> {
+        let ask = self.asks.iter().find(|a| a.slot == slot)?.clone();
+        if self.pick_key != self.ask_key {
+            self.picks.clear();
+            self.pick_key = self.ask_key.clone();
+        }
+        self.picks.insert(slot, name.to_string());
+        self.learned.put(ask.phase, &ask.text, name);
+        self.asks.retain(|a| a.slot != slot);
+        if let Some((reading, ..)) = self.last.as_mut() {
+            Self::put_card(reading, slot, name);
+        }
+        self.readvise()
+    }
+
+    /// The size of the last board's picture.
+    pub fn last_size(&self) -> Option<(usize, usize)> {
+        self.last.as_ref().map(|(_, w, h)| (*w, *h))
+    }
+
+    /// The last board as read (with the picks in).
+    pub fn last_reading(&self) -> Option<&Reading> {
+        self.last.as_ref().map(|(r, ..)| r)
+    }
+
     pub fn readvise(&mut self) -> Option<(Plan, usize, usize)> {
         let (mut reading, w, h) = self.last.clone()?;
         reading.state.shelley = Some(self.shelley);
@@ -151,6 +302,11 @@ impl Pipeline {
         let tr = track_instruments(&self.tracker, &raw, trigger);
         self.tracker = tr.tracker.clone();
         let mut reading = raw;
+        // not in upstream: the player's picks and the learned titles, before the advice
+        if self.test_unknown {
+            self.hide_first(&mut reading);
+        }
+        self.fill_picks(&mut reading, img.width, img.height);
         reading.state.instruments = tr.instruments.clone();
         reading.state.instrument_rounds = Some(tr.rounds.clone());
         // a round not read for sure: the one before stands in, not round 1 (before any board, round 1 as upstream's
@@ -222,7 +378,47 @@ fn encode_png_with(path: &std::path::Path, w: u32, h: u32, rgba: &[u8], level: p
 
 #[cfg(test)]
 mod tests {
-    use super::resumes;
+    use super::{resumes, Pipeline};
+    use vorax_scan::reading::Problem;
+
+    #[test]
+    fn a_picked_card_goes_back_in_its_place() {
+        // a board read with every card made out: its middle card taken out as not read, then picked back
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/frames");
+        let mut paths: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "png")).collect();
+        paths.sort();
+        let data = vorax_scan::scan_data();
+        let reading = paths.iter().find_map(|p| {
+            let img = super::decode_png(p).ok()?;
+            let r = vorax_scan::scan(&img, data, true);
+            (r.state.hand.len() == 3 && !r.problems.iter().any(|q| matches!(q, Problem::UnknownArt { .. })) && r.state.phase != vorax::advisor::ScreenPhase::Protocol).then_some(r)
+        });
+        let Some(whole) = reading else { panic!("no fully read three-card board in fixtures/frames") };
+        let mut r = whole.clone();
+        let middle = r.state.hand.remove(1);
+        r.problems.push(Problem::UnknownArt { field: "hand1".into(), crop: vorax_scan::pixels::Rect::new(0.0, 0.0, 1.0, 1.0), hand: None, text: Some("麻 、 異 魔".into()) });
+        assert_eq!(Pipeline::unknown_slots(&r), vec![(1, "麻 、 異 魔".to_string())]);
+        Pipeline::put_card(&mut r, 1, &middle);
+        assert_eq!(r.state.hand, whole.state.hand);
+        assert!(Pipeline::unknown_slots(&r).is_empty());
+        assert_eq!(r.fields["hand1"].guess.as_deref(), Some(middle.as_str()));
+        // a card the data doesn't have isn't asked about
+        let mut r = whole.clone();
+        r.state.hand.remove(2);
+        r.problems.push(Problem::UnknownArt { field: "hand2".into(), crop: vorax_scan::pixels::Rect::new(0.0, 0.0, 1.0, 1.0), hand: None, text: Some("解剖浸液：病軀".into()) });
+        assert!(Pipeline::unknown_slots(&r).is_empty());
+    }
+
+    #[test]
+    fn candidates_come_from_the_text_and_the_pictures() {
+        let data = vorax_scan::scan_data();
+        let c = vorax_scan::titles::candidates(data, "potion", "麻 、 異 魔", vorax_scan::titles::Script::Han, &[("Spinal Solution - Aemberon".to_string(), 0.9)], 4);
+        assert_eq!(c.first().map(String::as_str), Some("Anesthetic Tincture - Aemberon"));
+        assert!(c.iter().any(|n| n == "Spinal Solution - Aemberon"));
+        assert!(c.len() <= 4);
+        // nothing read and no pictures: nothing to offer but the list of every card
+        assert!(vorax_scan::titles::candidates(data, "potion", "", vorax_scan::titles::Script::Han, &[], 4).is_empty());
+    }
 
     #[test]
     fn the_screen_opened_again_mid_game_goes_on() {

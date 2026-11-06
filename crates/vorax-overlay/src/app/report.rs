@@ -114,7 +114,7 @@ pub fn pack(version: &str) -> Result<PathBuf, String> {
         }
     }
     let dir = data_dir();
-    for name in ["overlay.log.old", "overlay.log", "settings.json"] {
+    for name in ["overlay.log.old", "overlay.log", "settings.json", "learned.json"] {
         if let Ok(data) = std::fs::read(dir.join(name)) {
             files.push((name.to_string(), data));
         }
