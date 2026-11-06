@@ -10,7 +10,7 @@ use vorax_scan::reading::{Problem, Reading};
 
 /// A card face in reference pixels (layout.ts CARD_FACE).
 const CARD_W: f64 = 230.0;
-const CARD_H: f64 = 340.0;
+pub(crate) const CARD_H: f64 = 340.0;
 
 #[derive(Clone, Debug, Default)]
 pub struct Pill {
@@ -88,7 +88,7 @@ const ZH_NOT_FULLY: &str = "畫面未完全讀到";
 const ZH_NOT_IN_DATA: &str = "不在資料內，請自行判斷";
 const ZH_READ_CARDS: &str = "卡：";
 const ZH_EMPTY: &str = "空";
-const ZH_UNKNOWN: &str = "？";
+pub(crate) const ZH_UNKNOWN: &str = "？";
 const ZH_SEP: &str = "｜";
 const ZH_MEAN: &str = "平均";
 const ZH_TEN_THOUSAND: &str = "萬";
@@ -103,7 +103,7 @@ const MAGIC: (u8, u8, u8) = (110, 170, 255);
 const RARE: (u8, u8, u8) = (255, 200, 90);
 const BOSS: (u8, u8, u8) = (255, 95, 85);
 const EMPTY: (u8, u8, u8) = (150, 144, 144);
-const UNREAD: (u8, u8, u8) = (255, 150, 60);
+pub(crate) const UNREAD: (u8, u8, u8) = (255, 150, 60);
 
 /// A monster as its mark shows it: its kind in one word ("骨") and Activity × Quantity, in its rarity's colour.
 fn monster_mark(m: &vorax::advisor::ScreenMonster, zh: bool) -> (String, (u8, u8, u8)) {

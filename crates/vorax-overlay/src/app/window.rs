@@ -343,6 +343,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                         }
                         ToUi::AskClose => {
                             s.asks.clear();
+                            s.placed = None;
                             super::menu::close_picker();
                         }
                         ToUi::Learned(n) => s.learned = n,
@@ -718,9 +719,9 @@ unsafe fn command(hwnd: HWND, id: u32) {
     }
 }
 
-/// The picker's card (not in upstream): each card not made out and the cards it most likely is, in the game's
-/// bottom left corner (clear of the cards and tanks), while the game is in front. Not picking: it's left alone, and
-/// closes when the board changes.
+/// The picker's card (not in upstream): the leftmost card not made out and the cards it most likely is (the next
+/// one is asked once it's picked), in the game's bottom left corner (clear of the cards and tanks), while the game
+/// is in front. Not picking: it's left alone, and closes when the board changes.
 fn show_picker(s: &mut State) {
     if s.asks.is_empty() || !s.settings.picker.unwrap_or(true) {
         return;
@@ -731,12 +732,16 @@ fn show_picker(s: &mut State) {
     }
     let Some((gx, gy, _, gh)) = client_rect(game) else { return };
     let mut rows: Vec<Row> = Vec::new();
-    for (i, a) in s.asks.iter().enumerate() {
-        if i > 0 {
-            rows.push(Row::Separator);
-        }
+    let more = s.asks.len() - 1;
+    if let Some(a) = s.asks.first() {
         let n = a.slot + 1;
-        rows.push(Row::Header { title: if english() { format!("Card {n} not read") } else { format!("第 {n} 張卡讀不到") }, status: tr("選一張，下次會自動認出", "Pick it: it's known next time") });
+        let status = match (more, english()) {
+            (0, false) => "選一張，下次會自動認出".to_string(),
+            (m, false) => format!("選一張，下次會自動認出（還有 {m} 張）"),
+            (0, true) => "Pick it: it's known next time".to_string(),
+            (m, true) => format!("Pick it: it's known next time ({m} more)"),
+        };
+        rows.push(Row::Header { title: if english() { format!("Card {n} not read") } else { format!("第 {n} 張卡讀不到") }, status });
         let phase = if a.phase == "potion" { vorax::advisor::ScreenPhase::Potion } else { vorax::advisor::ScreenPhase::Instrument };
         for (k, name) in a.candidates.iter().enumerate().take(6) {
             let label = if english() { name.clone() } else { crate::draw::zh_name(phase, name) };
@@ -747,6 +752,8 @@ fn show_picker(s: &mut State) {
     let inset = (gh as f64 * 0.025) as i32;
     super::menu::picker(s.hwnd, rows, s.fonts.clone(), gx + inset, gy + gh - inset);
     s.ask_shown = true;
+    // the "？" over the card asked about
+    s.placed = None;
 }
 
 /// The player picked a card for a place: the worker advises again with it (and learns it); the other cards not
@@ -754,10 +761,11 @@ fn show_picker(s: &mut State) {
 fn picked(s: &mut State, slot: usize, name: String) {
     let _ = s.tx.send(ToWorker::Pick(slot, name));
     s.asks.retain(|a| a.slot != slot);
+    // the next card is asked once the game is back in front (follow() looks every tick: Windows may not have put
+    // it there yet)
+    s.ask_shown = false;
+    s.placed = None;
     focus_game();
-    if !s.asks.is_empty() {
-        show_picker(s);
-    }
 }
 
 /// The game in front again (after a pick in the picker's card or the main window).
@@ -834,6 +842,20 @@ fn draw(s: &State, (x, y, w, h): (i32, i32, i32, i32)) {
         t.y *= sy;
         t.w *= sx;
         t.h *= sy;
+    }
+    // not in upstream: a "？" over the card the picker asks about (shown whatever Ctrl+Alt+D says)
+    if let Some(a) = s.asks.first().filter(|_| s.ask_shown) {
+        let (afw, afh) = s.ask_frame;
+        if afw > 0 && afh > 0 {
+            let (ax, ay) = (w as f64 / afw as f64, h as f64 / afh as f64);
+            let k = afh as f64 / 1440.0;
+            let sc = (h as f64 / 1440.0).max(0.6);
+            let (cx, top) = (a.at.0 * ax, (a.at.1 - crate::draw::CARD_H * k / 2.0) * ay);
+            // the mark goes under `under`: it ends a little above the card's top
+            let under = vorax_scan::pixels::Rect::new(cx - 1.0, top - 44.0 * sc, 2.0, 1.0);
+            let text = if english() { "?".to_string() } else { crate::draw::ZH_UNKNOWN.to_string() };
+            p.read_tanks.push(crate::draw::TankMark { under, text, colour: crate::draw::UNREAD });
+        }
     }
     let pm = render(&p, w as u32, h as u32, &s.fonts, crate::draw::accent(s.settings.accent));
     unsafe { put(s.hwnd, x, y, w, h, pm.data()) };

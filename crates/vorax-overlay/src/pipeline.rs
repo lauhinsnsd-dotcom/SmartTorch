@@ -114,10 +114,10 @@ impl Pipeline {
     }
 
     /// The last board advised again (the Shelley level changed): its marks, for a picture of this size.
-    /// The cards on the last board not made out, by place (a card the data doesn't have isn't one).
+    /// The cards on the last board not made out, left to right (a card the data doesn't have isn't one).
     fn unknown_slots(reading: &Reading) -> Vec<(usize, String)> {
         let data = scan_data();
-        reading
+        let mut out: Vec<(usize, String)> = reading
             .problems
             .iter()
             .filter_map(|p| match p {
@@ -128,7 +128,9 @@ impl Pipeline {
                 }
                 _ => None,
             })
-            .collect()
+            .collect();
+        out.sort_by_key(|(j, _)| *j);
+        out
     }
 
     fn phase_of(reading: &Reading) -> Option<&'static str> {
