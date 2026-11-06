@@ -1048,10 +1048,6 @@ fn from_hub(text: &str) {
                 Err(e) => note(&format!("report not packed: {e}")),
             }
         }
-        // the main window's button, as Ctrl+Alt+B (which another program can hold)
-        "mark" => {
-            with_state(|s| s.tx.send(ToWorker::Mark).ok());
-        }
         "markedOpen" => super::report::open_marked(),
         "markedClear" => {
             super::report::clear();

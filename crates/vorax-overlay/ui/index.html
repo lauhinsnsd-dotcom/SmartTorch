@@ -245,8 +245,7 @@ function vorax() {
     <div class="row" style="justify-content:space-between;gap:8px">
       <div class="row" style="gap:8px">${v.marked ? `<span class="note">${L(`已記下 ${v.marked} 個畫面`, `${v.marked} picture${v.marked > 1 ? "s" : ""} set aside`)}</span>
         <button class="btn small" data-cmd="markedOpen">${L("開啟資料夾", "Open folder")}</button>
-        <button class="btn small" data-confirm="markedClear">${L("清除", "Clear")}</button>` : `<span class="note">${L("尚未記下畫面", "No pictures set aside")}</span>`}
-        <button class="btn small" data-cmd="mark" title="${L("等於 Ctrl + Alt + B", "Same as Ctrl + Alt + B")}">${L("記下目前畫面", "Set this picture aside")}</button></div>
+        <button class="btn small" data-confirm="markedClear">${L("清除", "Clear")}</button>` : `<span class="note">${L("尚未記下畫面", "No pictures set aside")}</span>`}</div>
       <button class="btn goldline" data-cmd="report">${L("回報問題", "Report a problem")}</button>
     </div>
     ${v.report ? `<div class="tip">${L("已在桌面建立", "Made on the desktop:")} <b>${esc(v.report.split("\\").pop())}</b>${L("，並在瀏覽器開啟了回報頁面：把這個 zip 拖進頁面的「回報檔」欄，寫下發生了什麼即可（需要登入 GitHub）。", ", and the report page is open in the browser: drag the zip into its 回報檔 (report file) box and say what happened (a GitHub account is needed).")}</div>` : ""}
@@ -361,7 +360,7 @@ function help() {
   const items = [
     [L("找不到遊戲日誌", "Game log not found"), L("先開啟遊戲。仍然找不到：確認已在遊戲中開啟日誌（Esc →「帳號相關」→「開啟日誌」，再登出登入），或在「渴癮症助手」頁按「選擇…」，選遊戲資料夾裡的 Game\\UE_game\\TorchLight\\Saved\\Logs\\UE_game.log。", "Start the game first. Still not found: make sure the game's log is on (Esc → Account Related → Enable Log, then log in again), or press Choose… on the Vorax helper page and pick Game\\UE_game\\TorchLight\\Saved\\Logs\\UE_game.log in the game's folder.")],
     [L("找到日誌，但遊戲沒有寫入", "The log is found, but the game isn't writing it"), L("遊戲尚未開啟日誌。按 Esc →「帳號相關」→「開啟日誌」，然後登出再登入，狀態就會變綠。", "The game's log is off. Press Esc → Account Related → Enable Log, then log out and in again: the dot turns green.")],
-    [L("解析度不在支援範圍", "A resolution that isn't supported"), L("中文客戶端支援 2560×1440、3840×2160 與 1920×1080（2560×1440 最準）。其他解析度可能讀錯，建議改用其中一種；若想支援你的解析度，請用 Ctrl + Alt + B 或「記下目前畫面」記下畫面並回報問題。", "A Chinese client is supported at 2560×1440, 3840×2160 and 1920×1080 (2560×1440 reads best); others may be misread. To have yours supported, set pictures aside with Ctrl + Alt + B or Set this picture aside, and report a problem.")],
+    [L("解析度不在支援範圍", "A resolution that isn't supported"), L("中文客戶端支援 2560×1440、3840×2160 與 1920×1080（2560×1440 最準）。其他解析度可能讀錯，建議改用其中一種；若想支援你的解析度，請用 Ctrl + Alt + B 記下畫面並回報問題。", "A Chinese client is supported at 2560×1440, 3840×2160 and 1920×1080 (2560×1440 reads best); others may be misread. To have yours supported, set pictures aside with Ctrl + Alt + B and report a problem.")],
     [L("卡片常常「未讀到」", "Cards often not read"), L("SmartTorch 的語言要和遊戲相同：中文遊戲用繁體或简体，英文遊戲用 English（「設定 › 一般」），因為卡名是用 SmartTorch 語言的文字辨識讀取。「文字辨識」那一行是黃點時，Windows 沒有中文文字辨識，卡片只能靠圖案辨認：請在 Windows「設定 › 時間與語言 › 語言與地區」新增中文。", "SmartTorch's language should match the game's: English for an English client, Traditional or Simplified Chinese for a Chinese one (Settings › General), as card names are read in SmartTorch's language. A yellow dot on Text reading means Windows has no Chinese text recognition and cards are told by their pictures only: add Chinese in Windows' Settings › Time & language › Language & region.")],
     [L("遊戲是獨佔全螢幕", "The game is in exclusive full screen"), L("提示無法疊在獨佔全螢幕上。請在遊戲設定把顯示模式改為「無邊框」或「視窗」。", "The hints can't show over exclusive full screen. Switch the game's display mode to borderless or windowed.")],
   ];
