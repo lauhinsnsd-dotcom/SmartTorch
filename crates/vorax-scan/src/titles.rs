@@ -328,11 +328,6 @@ pub fn candidates(data: &ScanData, phase: &str, text: &str, script: Script, pict
     out
 }
 
-/// not in upstream: every card of a kind of pick (`"potion"`, `"instrument"`), in the data's order.
-pub fn phase_names<'a>(data: &'a ScanData, phase: &str) -> &'a [String] {
-    names_for(data, phase)
-}
-
 fn names_for<'a>(data: &'a ScanData, phase: &str) -> &'a [String] {
     match phase {
         "potion" => &data.names.potion,

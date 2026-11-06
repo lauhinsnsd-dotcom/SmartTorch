@@ -66,16 +66,6 @@ h2 { margin: 0; font-size: 16px; color: var(--gold2); }
 .sw i { width: 22px; height: 22px; border-radius: 50%; background: var(--bg); display: block; }
 .swrow { display: flex; align-items: center; gap: 12px; font-size: 14px; flex-wrap: wrap; }
 .note { color: var(--mute); font-size: 13px; }
-/* the picker's list of every card (a card not read) */
-#pick { position: fixed; inset: 0; background: rgba(8, 9, 12, 0.72); display: none; align-items: center; justify-content: center; z-index: 50; }
-#pick.on { display: flex; }
-.pickbox { width: min(560px, 92vw); max-height: 86vh; display: flex; flex-direction: column; gap: 12px; background: var(--card); border: 1px solid var(--line2); border-radius: 14px; padding: 20px; box-sizing: border-box; }
-.pickbox input { font: inherit; font-size: 15px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line2); background: var(--bg); color: var(--text); }
-.picklist { overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
-.picklist button { text-align: left; font: inherit; font-size: 15px; padding: 10px 12px; min-height: 44px; border-radius: 8px; border: 1px solid transparent; background: var(--card2); color: var(--text); cursor: pointer; }
-.picklist button:hover, .picklist button:focus-visible { border-color: var(--gold); outline: none; }
-.picklist button.top { color: var(--gold2); }
-.picklist .en { color: var(--mute); font-size: 13px; margin-left: 8px; }
 .keys { display: grid; grid-template-columns: 140px minmax(0, 1fr); row-gap: 6px; font-size: 13px; color: var(--soft); border-top: 1px solid var(--line); padding-top: 14px; }
 .keys .kk { color: var(--text); }
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
@@ -121,7 +111,6 @@ input.mono, .ccode { font-family: Consolas, "Cascadia Mono", monospace; }
   </nav>
   <main id="main"></main>
 </div>
-<div id="pick"></div>
 <script>
 "use strict";
 // Traditional → Simplified, character by character (OpenCC, made by dev/make_ui_t2s.py), after the words that
@@ -562,8 +551,6 @@ document.addEventListener("click", (e) => {
   if (t.dataset.goto) { page = "settings"; tab = t.dataset.goto; render(); document.getElementById("main").scrollTop = 0; return; }
   if (t.dataset.url) { send({ cmd: "open", url: t.dataset.url }); return; }
   if (t.dataset.code) { codeAction(t.dataset.code, Number(t.dataset.i)); return; }
-  if (t.dataset.pickName !== undefined) { send({ cmd: "pick", slot: Number(t.dataset.pickSlot), name: t.dataset.pickName }); closePick(); return; }
-  if (t.dataset.pickClose !== undefined) { send({ cmd: "pickClose" }); closePick(); return; }
   if (t.dataset.confirm) {
     const words = {
       clearRecords: L("清除紀錄？對局紀錄、統計、記錄檔和記下的畫面都會刪除，之後從零開始。（有問題要回報的話，請先按「回報問題」再清除。）", "Clear records? Your runs, the statistics, the log and the pictures set aside are deleted, and it starts from zero. (Report a problem first if you have one.)"),
@@ -667,48 +654,10 @@ document.addEventListener("dragend", () => {
   document.querySelectorAll(".crow.drag, .crow.over").forEach((x) => x.classList.remove("drag", "over"));
 });
 
-// the picker: every card of the kind for a card not read, to search and pick from (drawn once for each ask, so
-// what's typed stays while the state comes every few seconds)
-let pickDrawn = "";
-function closePick() {
-  const box = document.getElementById("pick");
-  if (box) box.classList.remove("on");
-  pickDrawn = "";
-}
-function drawPick() {
-  const pk = S && S.vorax && S.vorax.pick;
-  const box = document.getElementById("pick");
-  if (!box) return;
-  if (!pk) { if (pickDrawn) closePick(); return; }
-  const key = pk.slot + ":" + pk.phase + ":" + S.lang;
-  if (pickDrawn === key) return;
-  pickDrawn = key;
-  const shown = (n) => (en() ? n.en : n.zh);
-  const top = pk.top || [];
-  const names = pk.names.slice().sort((a, b) => (top.indexOf(a.en) < 0 ? 99 : top.indexOf(a.en)) - (top.indexOf(b.en) < 0 ? 99 : top.indexOf(b.en)));
-  box.innerHTML = `<div class="pickbox" role="dialog" aria-modal="true" aria-labelledby="pickh">
-    <div class="row" style="justify-content:space-between"><h2 id="pickh">${L(`第 ${pk.slot + 1} 張卡是哪一張？`, `Which is card ${pk.slot + 1}?`)}</h2><button class="btn small" data-pick-close="">${L("關閉", "Close")}</button></div>
-    <label class="note" for="pickq">${L("輸入卡名的一兩個字搜尋；選過的卡下次會自動認出", "Type part of its name; a card picked is known next time")}</label>
-    <input id="pickq" type="search" autocomplete="off" placeholder="${L("搜尋卡名", "Search")}">
-    <div class="picklist">${names.map((n) => `<button class="${top.includes(n.en) ? "top" : ""}" data-pick-slot="${pk.slot}" data-pick-name="${esc(n.en)}" data-q="${esc((n.zh + " " + toSc(n.zh) + " " + n.en).toLowerCase())}">${esc(shown(n))}${en() ? "" : `<span class="en">${esc(n.en)}</span>`}</button>`).join("")}</div>
-  </div>`;
-  if (S.lang === "sc") convert(box);
-  box.classList.add("on");
-  const q = document.getElementById("pickq");
-  q.addEventListener("input", () => {
-    const w = q.value.trim().toLowerCase();
-    box.querySelectorAll(".picklist button").forEach((b) => { b.style.display = !w || b.dataset.q.includes(w) ? "" : "none"; });
-  });
-  q.focus();
-}
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && pickDrawn) { send({ cmd: "pickClose" }); closePick(); }
-});
-
 window.chrome && window.chrome.webview && window.chrome.webview.addEventListener("message", (e) => {
   const m = e.data;
   if (!m) return;
-  if (m.type === "state") { S = m; render(); drawPick(); }
+  if (m.type === "state") { S = m; render(); }
   else if (m.type === "codes") { CODES = Array.isArray(m.list) ? m.list : []; if (page === "codes") drawCodes(); }
 
   else if (m.type === "tab") {

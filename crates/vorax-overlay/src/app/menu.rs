@@ -397,8 +397,8 @@ pub fn open(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>) {
     show(owner, rows, fonts, Place::Cursor);
 }
 
-/// The picker's card (not in upstream): its left edge at `x`, its middle at `y` (screen pixels), kept on the
-/// screen, on top without taking the focus from the game.
+/// The picker's card (not in upstream): its bottom left corner at `x`, `y` (screen pixels), kept on the screen,
+/// on top without taking the focus from the game.
 pub fn picker(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, x: i32, y: i32) {
     show(owner, rows, fonts, Place::At(POINT { x, y }));
     with(|m| m.picker = true);
@@ -444,7 +444,7 @@ fn show(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, place: Place) {
         // the card's corner at the cursor (or the work area's), kept inside the screen's work area
         let margin = (MARGIN * s) as i32;
         let (x, y) = match place {
-            Place::At(p) => (p.x.clamp(work.left, work.right - w), (p.y - h / 2).clamp(work.top, work.bottom - h)),
+            Place::At(p) => (p.x.clamp(work.left, work.right - w), (p.y - h).clamp(work.top, work.bottom - h)),
             _ => {
                 let at = if by_tray { POINT { x: work.right, y: work.bottom } } else { cur };
                 ((at.x - w + margin).clamp(work.left, work.right - w), (at.y - h + margin).clamp(work.top, work.bottom - h))

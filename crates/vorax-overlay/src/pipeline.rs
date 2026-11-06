@@ -207,7 +207,7 @@ impl Pipeline {
         let pos = layout_at(w, h, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0)).hand_at(size).to_vec();
         for (j, text) in Self::unknown_slots(reading) {
             let pictures = reading.hand_ranks.as_ref().and_then(|r| r.get(j)).cloned().unwrap_or_default();
-            let candidates = vorax_scan::titles::candidates(scan_data(), phase, &text, self.script, &pictures, 4);
+            let candidates = vorax_scan::titles::candidates(scan_data(), phase, &text, self.script, &pictures, 5);
             let at = pos.get(j).map_or((w as f64 / 2.0, h as f64 / 2.0), |c| (c.cx, c.cy));
             self.asks.push(Ask { slot: j, phase, text, candidates, at });
         }
