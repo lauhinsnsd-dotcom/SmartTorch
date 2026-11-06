@@ -167,21 +167,29 @@ impl Pipeline {
         reading.fields.insert(key, vorax_scan::reading::FieldRead { sure: false, guess: Some(name.to_string()), ..Default::default() });
     }
 
-    /// The picker's test: the first card taken out as not read, with its title half read (a character or a word
-    /// dropped), as a card the reader missed would be.
+    /// The picker's test: the first and the last card taken out as not read, with their titles half read (a
+    /// character or a word dropped), as cards the reader missed would be.
     fn hide_first(&self, reading: &mut Reading) {
-        if Self::phase_of(reading).is_none() || reading.state.hand.is_empty() || reading.problems.iter().any(|p| matches!(p, Problem::UnknownArt { field, .. } if field == "hand0")) {
+        if Self::phase_of(reading).is_none() || reading.state.hand.is_empty() || reading.problems.iter().any(|p| matches!(p, Problem::UnknownArt { .. })) {
             return;
         }
-        let name = reading.state.hand.remove(0);
-        let text = if self.script == Script::Han {
-            let zh: Vec<char> = crate::draw::zh_name(reading.state.phase, &name).chars().collect();
-            zh.iter().enumerate().filter(|(i, _)| *i != 1).map(|(_, c)| *c).collect::<String>()
-        } else {
-            name.split(' ').skip(1).collect::<Vec<_>>().join(" ")
-        };
-        reading.fields.remove("hand0");
-        reading.problems.push(Problem::UnknownArt { field: "hand0".into(), crop: vorax_scan::pixels::Rect::new(0.0, 0.0, 1.0, 1.0), hand: None, text: Some(text) });
+        let size = reading.state.hand.len();
+        // the last first, so the first's place in the hand stays
+        for slot in [size - 1, 0] {
+            if slot == 0 && size == 1 && reading.state.hand.is_empty() {
+                break;
+            }
+            let name = reading.state.hand.remove(slot);
+            let text = if self.script == Script::Han {
+                let zh: Vec<char> = crate::draw::zh_name(reading.state.phase, &name).chars().collect();
+                zh.iter().enumerate().filter(|(i, _)| *i != 1).map(|(_, c)| *c).collect::<String>()
+            } else {
+                name.split(' ').skip(1).collect::<Vec<_>>().join(" ")
+            };
+            let key = format!("hand{slot}");
+            reading.fields.remove(&key);
+            reading.problems.push(Problem::UnknownArt { field: key, crop: vorax_scan::pixels::Rect::new(0.0, 0.0, 1.0, 1.0), hand: None, text: Some(text) });
+        }
     }
 
     /// The player's picks for this board, and cards learned from earlier picks, put in; what's still not made out
