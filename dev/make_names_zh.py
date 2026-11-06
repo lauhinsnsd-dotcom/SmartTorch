@@ -109,7 +109,8 @@ for c in sorted(chars):
     s = t2s.convert(c)
     if s != c and len(s) == 1:
         fold[c] = s
-fold.update({'黏': '粘', '蹠': '跖', '鬆': '松', '衛': '卫'})
+# 痳: Windows' reader takes 麻 for it (1920x1080)
+fold.update({'黏': '粘', '蹠': '跖', '鬆': '松', '衛': '卫', '痳': '麻'})
 out_data['fold'] = fold
 # cards a Chinese client shows that upstream's data doesn't have (the Solver can't weigh them): recognized so the
 # hint says so, instead of "not read"

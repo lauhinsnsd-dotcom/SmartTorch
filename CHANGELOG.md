@@ -3,6 +3,13 @@
 每個版本更新了什麼。有新版本時，SmartTorch 的更新提示也會顯示該版本的內容。
 What each version changed. When a new version is out, SmartTorch's update note shows its part.
 
+## v1.0.4
+
+**渴癮症助手 · Vorax helper**
+- 中文客戶端支援 1920×1080：卡名讀不到時，改用黑白版本再讀；「痳」當作「麻」；只讀到一半的卡名也較容易辨認。 A Chinese client at 1920×1080: a card name not read is read again in black and white; 痳 counts as 麻; a name half read is told more often.
+- 2560×1440 最準；3840×2160 和 1920×1080 只測試過幾十局，遇到讀錯請多回報。 2560×1440 reads best; 3840×2160 and 1920×1080 have had a few dozen games of testing, so please report misreads.
+- 主視窗新增「記下目前畫面」按鈕（等於 Ctrl + Alt + B，快捷鍵被其他程式佔用時可用）。 A Set this picture aside button in the main window (as Ctrl + Alt + B, for when another program holds the shortcut).
+
 ## v1.0.3
 
 **渴癮症助手 · Vorax helper**

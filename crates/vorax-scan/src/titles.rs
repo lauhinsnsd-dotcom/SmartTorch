@@ -158,7 +158,10 @@ pub fn han_pick(data: &ScanData, phase: &str, text: &str) -> Option<String> {
         && PHASES.iter().all(|p| {
             zh_names_for(data, p).iter().filter(|(en, _)| **en != name).all(|(_, zh)| zh.iter().all(|z| lcs(&han(z, fold), &t) < matched))
         });
-    (alone || (matched >= 2 && ratio >= 0.5 && ratio - second >= 0.2 - 1e-9)).then_some(name)
+    // not in upstream: three or more characters and half the name, a little closer to the next card (1920x1080:
+    // "麻 、 異 魔" for 麻藥酊劑-異魔, 3/6 over 脊髓溶液-異魔's 2/6)
+    let gap = if matched >= 3 { 0.15 } else { 0.2 };
+    (alone || (matched >= 2 && ratio >= 0.5 && ratio - second >= gap - 1e-9)).then_some(name)
 }
 
 /// A title not read as any card that is one of the cards upstream's data doesn't have (names_zh.json "unsupported"):
