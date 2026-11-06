@@ -236,6 +236,18 @@ pub const LINE_LIFTS: [f64; 2] = [0.0, -30.0];
 /// not in upstream: the title line read once more at this size when no read of it named a card
 const LINE_SMALL: f64 = 0.6;
 
+/// not in upstream: a title crop (dark text on white) in black and white only.
+pub fn black_and_white(img: &Img) -> Img {
+    let mut out = img.clone();
+    for p in out.data.chunks_exact_mut(4) {
+        let v = if p[0] < 60 { 0 } else { 255 };
+        p[0] = v;
+        p[1] = v;
+        p[2] = v;
+    }
+    out
+}
+
 pub fn title_line(img: &Img, c: &CardPos, k: f64, lift: f64) -> Img {
     stretched(img, c, k, Rect::new(LINE_AREA.x, LINE_AREA.y + lift, LINE_AREA.w, LINE_AREA.h), 24)
 }
@@ -398,6 +410,20 @@ pub fn read_titles_in(img: &Img, reading: Reading, data: &ScanData, read_text: &
                 let t = read_text(&crate::pixels::resize(&line, w.max(1), h.max(1)));
                 if names_a_card(data, &phases, &t, script) {
                     texts[j] = t;
+                    named = true;
+                }
+            }
+            // not in upstream: the line in black and white, as it is and smaller (1920x1080: its small title,
+            // enlarged, is too soft for Windows' reader, which reads other characters, "眚 觼 溶 液" for 青膽汁溶液)
+            if !named {
+                let line = black_and_white(&title_line(img, c, l.k, 0.0));
+                let (w, h) = ((line.width as f64 * LINE_SMALL) as usize, (line.height as f64 * LINE_SMALL) as usize);
+                for v in [crate::pixels::resize(&line, w.max(1), h.max(1)), line] {
+                    let t = read_text(&v);
+                    if names_a_card(data, &phases, &t, script) {
+                        texts[j] = t;
+                        break;
+                    }
                 }
             }
         }
