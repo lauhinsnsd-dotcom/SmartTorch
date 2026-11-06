@@ -366,9 +366,8 @@ function help() {
     [L("遊戲是獨佔全螢幕", "The game is in exclusive full screen"), L("提示無法疊在獨佔全螢幕上。請在遊戲設定把顯示模式改為「無邊框」或「視窗」。", "The hints can't show over exclusive full screen. Switch the game's display mode to borderless or windowed.")],
   ];
   const v = S.vorax;
-  // the picker's test: every board's first card counts as not read, so the picker can be tried at once
-  const test = `<div class="problem"><b>${L("測試手動選卡", "Try the card picker")}</b><p>${esc(L("開啟後，每個畫面的第 1 張和最後一張卡都會當作讀不到，馬上彈出選卡框，方便試用。試完請關閉（重開 SmartTorch 也會自動關閉）。", "While on, every board's first and last cards count as not read, so the picker comes up at once. Turn it off after (it's off again when SmartTorch restarts)."))}</p>
-    <div class="swrow">${sw(v.testPicker, "set", "testPicker", L("測試手動選卡", "Try the card picker"))}<span>${v.testPicker ? L("測試中", "On") : L("關閉", "Off")}</span></div></div>`;
+  // the picker's test (the author's, for videos): every board's first and last cards count as not read
+  const test = `<div class="problem"><div class="swrow">${sw(v.testPicker, "set", "testPicker", L("測試手動選卡（作者用）", "Picker test (the author's)"))}<span>${L("測試手動選卡（作者用）", "Picker test (the author's)")}</span></div></div>`;
   return items.map(([t, b]) => `<div class="problem"><b>${dot("r")}${t}</b><p>${esc(b)}</p></div>`).join("") + test;
 }
 

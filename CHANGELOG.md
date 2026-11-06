@@ -3,6 +3,16 @@
 每個版本更新了什麼。有新版本時，SmartTorch 的更新提示也會顯示該版本的內容。
 What each version changed. When a new version is out, SmartTorch's update note shows its part.
 
+## v1.0.5
+
+**渴癮症助手 · Vorax helper**
+- 新增手動選卡：卡片重讀後仍讀不到時，遊戲左下角會列出最可能的 5 張卡讓你選（一次一張，由左至右），被問的卡上方顯示「？」。選好立即重新計算建議，並記住這張卡，下次讀到同樣的字會自動認出。 New: picking a card not read. When a card still isn't read after the rereads, the five likeliest cards are listed in the game's bottom left corner (one card at a time, left to right), with a "?" over the card asked about. The advice is worked out again with the card picked, and it's known by itself next time.
+- 選卡期間不顯示建議卡、培養槽和刷新的框，選好才顯示，避免照著不完整的建議按錯。 While a card is being asked about, the frames on the card, tanks and reroll button stay hidden until it's picked.
+- 「渴癮症助手」頁可關閉手動選卡，或清除已學的卡；回報檔會附上已學的卡。 The Vorax helper page turns the picker off and forgets the learned cards; reports include them.
+
+**其他 · Other**
+- SmartTorch.exe 加上名稱、版本和作者資料（檔案「內容 › 詳細資料」）。 SmartTorch.exe carries its name, version and maker (Properties › Details).
+
 ## v1.0.4
 
 **渴癮症助手 · Vorax helper**

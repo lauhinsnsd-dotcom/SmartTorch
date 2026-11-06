@@ -815,6 +815,13 @@ fn draw(s: &State, (x, y, w, h): (i32, i32, i32, i32)) {
     let (fw, fh) = s.frame;
     let (sx, sy) = if fw > 0 && fh > 0 { (w as f64 / fw as f64, h as f64 / fh as f64) } else { (1.0, 1.0) };
     let mut p = if s.busy { plan.dimmed() } else { plan.clone() };
+    // not in upstream: while the picker asks about a card, the advice may be wrong: no frames to click by (the
+    // card, the tanks, the reroll button) until the card is picked and the advice given again
+    if !s.asks.is_empty() {
+        p.card = None;
+        p.tanks.clear();
+        p.button = None;
+    }
     if !s.show_read {
         p.read.clear();
         p.read_tanks.clear();
