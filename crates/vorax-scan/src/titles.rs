@@ -281,6 +281,29 @@ fn stretched(img: &Img, c: &CardPos, k: f64, area: Rect, pad: usize) -> Img {
     out
 }
 
+/// not in upstream: the one name whose words the title's pieces (its first three lines, words of four letters or
+/// more) begin, or are with one letter wrong, matching five letters or more; none when two names tie.
+pub fn word_pick(names: &[String], text: &str) -> Option<String> {
+    let words = |t: &str| -> Vec<String> { t.to_lowercase().split(|c: char| !c.is_ascii_lowercase()).filter(|w| !w.is_empty()).map(String::from).collect() };
+    let pieces: Vec<String> = text.lines().take(3).flat_map(|l| words(l)).filter(|w| w.len() >= 4).collect();
+    let fits = |piece: &str, word: &str| word.starts_with(piece) || (piece.len() == word.len() && piece.len() >= 5 && piece.chars().zip(word.chars()).filter(|(a, b)| a != b).count() == 1);
+    let mut best: Vec<(&String, usize)> = names
+        .iter()
+        .map(|n| {
+            let nw = words(n);
+            let letters: usize = pieces.iter().filter(|p| nw.iter().any(|w| fits(p, w))).map(|p| p.len()).sum();
+            (n, letters)
+        })
+        .filter(|x| x.1 >= 5)
+        .collect();
+    best.sort_by(|a, b| b.1.cmp(&a.1));
+    match best.as_slice() {
+        [(n, _)] => Some((*n).clone()),
+        [(n, a), (_, b), ..] if a > b => Some((*n).clone()),
+        _ => None,
+    }
+}
+
 fn names_for<'a>(data: &'a ScanData, phase: &str) -> &'a [String] {
     match phase {
         "potion" => &data.names.potion,
@@ -486,6 +509,11 @@ pub fn read_titles_in(img: &Img, reading: Reading, data: &ScanData, read_text: &
         } else if let Some(p) = pic.filter(|p| !p.unknown && p.field.as_ref().is_some_and(|f| f.guess.is_some() && (!han_client || f.sure))) {
             name = p.field.as_ref().unwrap().guess.clone();
             fields.insert(key, p.field.clone().unwrap());
+        } else if let Some(n) = (!han_client && img.height < 1300).then(|| word_pick(names_for(data, phase), &texts[j])).flatten() {
+            // not in upstream: an English title read in pieces (1920x1080: "Claws", "Hyperp / Front / Lobe") with no
+            // picture sure of it names the one card whose name words they begin (below 2560x1440 only)
+            fields.insert(key, FieldRead { sure: false, guess: Some(n.clone()), score: Some(top.1), second: second.map(|s| s.1) });
+            name = Some(n);
         } else {
             fields.insert(key, pic.and_then(|p| p.field.clone()).unwrap_or(FieldRead::sure(false)));
         }

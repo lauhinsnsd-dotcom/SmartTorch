@@ -7,6 +7,7 @@ What each version changed. When a new version is out, SmartTorch's update note s
 
 **渴癮症助手 · Vorax helper**
 - 中文客戶端支援 1920×1080：卡名讀不到時，改用黑白版本再讀；「痳」當作「麻」；只讀到一半的卡名也較容易辨認。 A Chinese client at 1920×1080: a card name not read is read again in black and white; 痳 counts as 麻; a name half read is told more often.
+- 英文客戶端 1920×1080：卡名只讀到一部分時（例如「Claws」），若只符合一張卡就認得出。 An English client at 1920×1080: a card name read only in part (such as "Claws") is told when it fits one card alone.
 - 2560×1440 最準；3840×2160 和 1920×1080 只測試過幾十局，遇到讀錯請多回報。 2560×1440 reads best; 3840×2160 and 1920×1080 have had a few dozen games of testing, so please report misreads.
 
 ## v1.0.3
