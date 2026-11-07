@@ -196,6 +196,13 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
                 send(ToUi::Clear);
                 retry = None;
                 reread_at = None;
+                relook_at = None;
+                // not in upstream: the picker's card goes too (it stayed up over the town)
+                if !asked.is_empty() {
+                    asked.clear();
+                    asked_slots.clear();
+                    send(ToUi::AskClose);
+                }
             }
             was_over = settler.over;
         }
