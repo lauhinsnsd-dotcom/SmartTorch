@@ -235,7 +235,16 @@ pub fn run(args: &[String]) {
             std::thread::sleep(std::time::Duration::from_secs(6 * 60 * 60));
         }
     });
-    let worker = std::thread::spawn(move || worker::run(opts, to_ui, waker, from_ui));
+    // not in upstream: the reading and the advice's futures below the game's priority, with a core or two left to
+    // it (they took every core at normal priority: on a weaker PC the game hitched at each move)
+    let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let threads = if cores >= 8 { cores - 2 } else { (cores - 1).max(1) };
+    let _ = rayon::ThreadPoolBuilder::new().num_threads(threads).start_handler(|_| sys::below_normal()).build_global();
+    sys::note(&format!("advice on {threads} of {cores} cores, below normal priority"));
+    let worker = std::thread::spawn(move || {
+        sys::below_normal();
+        worker::run(opts, to_ui, waker, from_ui)
+    });
     window::run_loop();
     let _ = worker.join();
     sys::note("Vorax overlay closed");

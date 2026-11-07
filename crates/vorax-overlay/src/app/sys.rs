@@ -207,6 +207,14 @@ pub fn find_log() -> Option<PathBuf> {
 }
 
 /// %APPDATA%\VoraxRs: settings and the debug log.
+/// The calling thread below normal priority (not in upstream): the game comes first when both want the CPU.
+pub fn below_normal() {
+    use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL};
+    unsafe {
+        let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+    }
+}
+
 pub fn data_dir() -> PathBuf {
     let base = std::env::var("APPDATA").map(PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
     let d = base.join("VoraxRs");
