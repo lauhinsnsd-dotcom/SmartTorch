@@ -220,7 +220,7 @@ fn parse(text: &str) -> Vec<Run> {
 }
 
 /// Not in upstream: each mode's finished runs against what the advice expected as they began, a line per mode
-/// ("保守：12 局 · 彩箱 8 局（67%）· 開局預計平均 61% · 平均 92 萬"), and once a mode has 20, how the runs in each band
+/// ("保守：12 局 · 84萬以上 8 局（67%）· 開局預計平均 61% · 平均 92 萬"), and once a mode has 20, how the runs in each band
 /// of first odds went. Runs not played to the protocols (closed early, read part way) aren't counted.
 fn summary(runs: &[Run]) -> Vec<String> {
     let mut out = Vec::new();
@@ -242,7 +242,7 @@ fn summary(runs: &[Run]) -> Vec<String> {
         out.push(if en {
             format!("{name}: {n} runs · {won} reached 840k ({:.0}%){mean_first} · mean {:.0}k", won as f64 / n as f64 * 100.0, mean_score / 1000.0)
         } else {
-            format!("{name}：{n} 局 · 彩箱 {won} 局（{:.0}%）{mean_first} · 平均 {:.0} 萬", won as f64 / n as f64 * 100.0, mean_score / 10_000.0)
+            format!("{name}：{n} 局 · 84萬以上 {won} 局（{:.0}%）{mean_first} · 平均 {:.0} 萬", won as f64 / n as f64 * 100.0, mean_score / 10_000.0)
         });
         if n >= 20 && mode != Mode::Unknown {
             let bands = [(0, 40, "<40%"), (40, 60, "40–60%"), (60, 80, "60–80%"), (80, 101, "≥80%")];
@@ -253,7 +253,7 @@ fn summary(runs: &[Run]) -> Vec<String> {
                     (!these.is_empty()).then(|| format!("{label} {}/{}", these.iter().filter(|r| r.last().score >= 840_000).count(), these.len()))
                 })
                 .collect();
-            out.push(if en { format!("  expected → reached: {}", parts.join(" · ")) } else { format!("　預計 → 實際彩箱：{}", parts.join(" · ")) });
+            out.push(if en { format!("  expected → reached: {}", parts.join(" · ")) } else { format!("　預計 → 實際 84萬以上：{}", parts.join(" · ")) });
         }
     }
     out
@@ -543,7 +543,7 @@ fn render(v: &View) -> Pixmap {
                 if let Some(p) = rounded(12.0 * s, y0, lw - 24.0 * s, height * s, 10.0 * s) {
                     list.fill_path(&p, &paint(rgba(GOLD.0, GOLD.1, GOLD.2, 0.07)), FillRule::Winding, Transform::identity(), None);
                 }
-                text(&mut list, &v.fonts.bold, &tr("實戰統計（只計打到最後的局，最終活性 840k 以上算彩箱）", "Your results (runs played to the end; 840k or more counts as reached)"), 12.5 * s, 28.0 * s, y0 + 21.0 * s, GOLD, 1.0);
+                text(&mut list, &v.fonts.bold, &tr("實戰統計（只計打到最後的局，最終活性 84萬以上）", "Your results (runs played to the end; 840k or more counts as reached)"), 12.5 * s, 28.0 * s, y0 + 21.0 * s, GOLD, 1.0);
                 for (k, line) in v.totals.iter().enumerate() {
                     text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, line, 12.5 * s, lw - 56.0 * s), 12.5 * s, 28.0 * s, y0 + (40.0 + 18.0 * k as f32) * s, soft, 1.0);
                 }
@@ -990,9 +990,9 @@ mod summary_tests {
         assert_eq!(
             summary(&runs),
             vec![
-                "原作者：1 局 · 彩箱 0 局（0%） · 開局預計平均 50% · 平均 45 萬".to_string(),
-                "衝分：1 局 · 彩箱 1 局（100%） · 開局預計平均 70% · 平均 100 萬".to_string(),
-                "未記錄模式：1 局 · 彩箱 1 局（100%） · 開局預計平均 60% · 平均 90 萬".to_string(),
+                "原作者：1 局 · 84萬以上 0 局（0%） · 開局預計平均 50% · 平均 45 萬".to_string(),
+                "衝分：1 局 · 84萬以上 1 局（100%） · 開局預計平均 70% · 平均 100 萬".to_string(),
+                "未記錄模式：1 局 · 84萬以上 1 局（100%） · 開局預計平均 60% · 平均 90 萬".to_string(),
             ]
         );
     }
