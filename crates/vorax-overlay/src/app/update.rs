@@ -7,10 +7,11 @@
 use super::sys::note;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use windows::core::HSTRING;
-use windows::Foundation::{AsyncOperationProgressHandler, Uri};
-use windows::Storage::Streams::DataReader;
-use windows::Web::Http::{HttpClient, HttpProgress};
+use windows::Foundation::{AsyncStatus, Uri};
+use windows::Storage::Streams::{Buffer, DataReader, InputStreamOptions};
+use windows::Web::Http::{HttpClient, HttpCompletionOption, HttpMethod, HttpRequestMessage};
 
 pub const REPO: &str = "lauhinsnsd-dotcom/SmartTorch";
 /// The asset of a release that is the overlay.
@@ -80,10 +81,7 @@ fn plain_notes(body: &str) -> String {
 
 /// The latest release when it's newer than this build (None when this is the latest).
 pub fn check() -> Result<Option<Release>, String> {
-    let c = client()?;
-    let uri = Uri::CreateUri(&HSTRING::from(format!("https://api.github.com/repos/{REPO}/releases/latest"))).map_err(|e| e.to_string())?;
-    let text = c.GetStringAsync(&uri).and_then(|op| op.get()).map_err(|e| format!("GitHub: {e}"))?.to_string();
-    let v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let v = get_json(&format!("https://api.github.com/repos/{REPO}/releases/latest"))?;
     let tag = v["tag_name"].as_str().ok_or("GitHub: no release")?;
     let (Some(latest), Some(mine)) = (version_of(tag), version_of(current())) else { return Err(format!("versions {tag} / {}", current())) };
     if latest <= mine {
@@ -112,33 +110,131 @@ fn aside(exe: &Path, ext: &str) -> PathBuf {
     PathBuf::from(s)
 }
 
-/// A GitHub API answer (the toolbox: another project's latest release).
-pub fn get_json(url: &str) -> Result<Value, String> {
-    let c = client()?;
-    let uri = Uri::CreateUri(&HSTRING::from(url)).map_err(|e| e.to_string())?;
-    let text = c.GetStringAsync(&uri).and_then(|op| op.get()).map_err(|e| format!("GitHub: {e}"))?.to_string();
-    serde_json::from_str(&text).map_err(|e| e.to_string())
+/// Not in upstream: how long a connection may send nothing before the try is given up (a stalled connection would
+/// otherwise be waited on for ever, the update card stuck at its percent), and how many tries in a row that bring
+/// no bytes before the player is told. Players without a steady way to GitHub (mainland China, no accelerator) saw
+/// downloads cut off and never finish; glcoder's Tartarus Solver, which goes on from where a download stopped,
+/// updated for them.
+const STALL: Duration = Duration::from_secs(30);
+const IDLE_TRIES: u32 = 5;
+
+/// Waits for a WinRT operation for at most STALL: its result, or an error once it failed or took too long (it's
+/// cancelled then).
+macro_rules! within_stall {
+    ($op:expr, $what:expr) => {{
+        let op = $op;
+        let t0 = Instant::now();
+        loop {
+            match op.Status() {
+                Ok(AsyncStatus::Started) if t0.elapsed() < STALL => std::thread::sleep(Duration::from_millis(20)),
+                Ok(AsyncStatus::Started) => {
+                    let _ = op.Cancel();
+                    break Err(format!("{}: nothing for {} s", $what, STALL.as_secs()));
+                }
+                Ok(AsyncStatus::Completed) => break op.GetResults().map_err(|e| format!("{}: {e}", $what)),
+                Ok(_) => break Err(format!("{}: {}", $what, op.ErrorCode().map(|c| windows::core::Error::from(c).to_string()).unwrap_or_else(|e| e.to_string()))),
+                Err(e) => break Err(format!("{}: {e}", $what)),
+            }
+        }
+    }};
 }
 
-/// Downloads a file (`progress` from 0 to 1 as it comes) and checks it against GitHub's SHA-256.
+/// A GitHub API answer (also the toolbox's: another project's latest release), tried three times.
+pub fn get_json(url: &str) -> Result<Value, String> {
+    let mut last = String::new();
+    for attempt in 0..3 {
+        if attempt > 0 {
+            std::thread::sleep(Duration::from_secs(2 * attempt));
+        }
+        let got = (|| -> Result<String, String> {
+            let c = client()?;
+            let uri = Uri::CreateUri(&HSTRING::from(url)).map_err(|e| e.to_string())?;
+            let op = c.GetStringAsync(&uri).map_err(|e| format!("GitHub: {e}"))?;
+            within_stall!(op, "GitHub").map(|t| t.to_string())
+        })();
+        match got {
+            Ok(text) => return serde_json::from_str(&text).map_err(|e| e.to_string()),
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
+}
+
+/// Downloads a file (`progress` from 0 to 1 as it comes) and checks it against GitHub's SHA-256. Not in upstream:
+/// a download cut off or stalled goes on from where it stopped (a Range request), tried again while tries bring
+/// bytes, given up after IDLE_TRIES in a row bring none.
 pub fn download(url: &str, size: u64, sha256: &str, progress: impl Fn(f32) + Send + Sync + 'static) -> Result<Vec<u8>, String> {
-    let c = client()?;
-    let uri = Uri::CreateUri(&HSTRING::from(url)).map_err(|e| e.to_string())?;
-    let op = c.GetBufferAsync(&uri).map_err(|e| e.to_string())?;
     let total = size.max(1) as f32;
-    let _ = op.SetProgress(&AsyncOperationProgressHandler::new(move |_, p: &HttpProgress| {
-        progress((p.BytesReceived as f32 / total).min(1.0));
-        Ok(())
-    }));
-    let buf = op.get().map_err(|e| format!("download: {e}"))?;
-    let reader = DataReader::FromBuffer(&buf).map_err(|e| e.to_string())?;
-    let mut bytes = vec![0u8; buf.Length().map_err(|e| e.to_string())? as usize];
-    reader.ReadBytes(&mut bytes).map_err(|e| e.to_string())?;
+    let mut bytes: Vec<u8> = Vec::with_capacity(size as usize);
+    let (mut idle, mut wait) = (0, Duration::from_secs(2));
+    loop {
+        let before = bytes.len();
+        let out = fetch_from(url, &mut bytes, &|n| progress((n as f32 / total).min(1.0)));
+        match out {
+            Ok(()) => break,
+            Err(e) => {
+                if bytes.len() > before {
+                    idle = 0;
+                    wait = Duration::from_secs(2);
+                } else {
+                    idle += 1;
+                }
+                if idle >= IDLE_TRIES {
+                    return Err(format!("download: {e} ({} of {size} bytes)", bytes.len()));
+                }
+                note(&format!("download cut off at {} of {size} bytes, trying again: {e}", bytes.len()));
+                std::thread::sleep(wait);
+                wait = (wait * 2).min(Duration::from_secs(30));
+            }
+        }
+    }
+    if size > 0 && bytes.len() as u64 != size {
+        return Err(format!("the download has {} bytes, GitHub says {size}", bytes.len()));
+    }
     let got = sha256_hex(&bytes);
     if got != sha256 {
         return Err(format!("the download doesn't match GitHub's SHA-256 ({} bytes)", bytes.len()));
     }
     Ok(bytes)
+}
+
+/// One try: the rest of the file after `bytes` (all of it when the server sends it whole), appended as it comes.
+/// Ok once the server has sent everything.
+fn fetch_from(url: &str, bytes: &mut Vec<u8>, progress: &dyn Fn(usize)) -> Result<(), String> {
+    let c = client()?;
+    let uri = Uri::CreateUri(&HSTRING::from(url)).map_err(|e| e.to_string())?;
+    let req = HttpRequestMessage::Create(&HttpMethod::Get().map_err(|e| e.to_string())?, &uri).map_err(|e| e.to_string())?;
+    if !bytes.is_empty() {
+        let headers = req.Headers().map_err(|e| e.to_string())?;
+        let _ = headers.TryAppendWithoutValidation(&HSTRING::from("Range"), &HSTRING::from(format!("bytes={}-", bytes.len())));
+    }
+    let op = c.SendRequestWithOptionAsync(&req, HttpCompletionOption::ResponseHeadersRead).map_err(|e| e.to_string())?;
+    let resp = within_stall!(op, "connecting")?;
+    let status = resp.StatusCode().map_err(|e| e.to_string())?.0;
+    match status {
+        206 => {}
+        // the whole file again (the server took no Range, or this is the first try)
+        200 => bytes.clear(),
+        _ => return Err(format!("GitHub answered {status}")),
+    }
+    let content = resp.Content().map_err(|e| e.to_string())?;
+    let op = content.ReadAsInputStreamAsync().map_err(|e| e.to_string())?;
+    let stream = within_stall!(op, "opening the download")?;
+    const CHUNK: u32 = 64 * 1024;
+    loop {
+        let buf = Buffer::Create(CHUNK).map_err(|e| e.to_string())?;
+        let op = stream.ReadAsync(&buf, CHUNK, InputStreamOptions::Partial).map_err(|e| e.to_string())?;
+        let got = within_stall!(op, "downloading")?;
+        let n = got.Length().map_err(|e| e.to_string())? as usize;
+        if n == 0 {
+            return Ok(());
+        }
+        let reader = DataReader::FromBuffer(&got).map_err(|e| e.to_string())?;
+        let at = bytes.len();
+        bytes.resize(at + n, 0);
+        reader.ReadBytes(&mut bytes[at..]).map_err(|e| e.to_string())?;
+        progress(bytes.len());
+    }
 }
 
 /// Downloads the release's overlay (`progress` from 0 to 1 as it comes), checks it, and swaps it in for this exe.

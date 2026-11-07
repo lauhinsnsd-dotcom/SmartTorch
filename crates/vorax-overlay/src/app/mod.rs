@@ -292,10 +292,7 @@ fn selftest(out: PathBuf) {
         Err(e) => println!("OCR: not available ({e})"),
     }
     let Some(game) = game else { return };
-    let cap = match capture::Capturer::new() {
-        Ok(c) => c,
-        Err(e) => return println!("capture: {e}"),
-    };
+    let cap = capture::Capturer::new();
     let t = std::time::Instant::now();
     match cap.grab(game) {
         Ok(Some(img)) => {

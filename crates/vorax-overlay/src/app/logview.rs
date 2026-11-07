@@ -262,10 +262,7 @@ fn summary(runs: &[Run]) -> Vec<String> {
 /// The toolbox's numbers for one mode: finished runs, those that reached 840k, and their mean score in 10,000s,
 /// from the debug log (and the one before it), counting runs from `since` (log time; 0: all).
 pub fn stats(aggressive: bool, since: f64) -> (usize, usize, f64) {
-    let dir = super::sys::data_dir();
-    let mut text = std::fs::read_to_string(dir.join("overlay.log.old")).unwrap_or_default();
-    text.push_str(&std::fs::read_to_string(dir.join("overlay.log")).unwrap_or_default());
-    stats_of(&text, aggressive, since)
+    stats_of(&super::sys::log_history(), aggressive, since)
 }
 
 fn stats_of(text: &str, aggressive: bool, since: f64) -> (usize, usize, f64) {
@@ -672,8 +669,7 @@ fn with<R>(f: impl FnOnce(&mut View) -> R) -> Option<R> {
 /// Opens the runs (or brings them to the front, read afresh), centred on the screen the cursor is on.
 pub fn open(fonts: Rc<Fonts>) {
     close();
-    let text = std::fs::read_to_string(data_dir().join("overlay.log")).unwrap_or_default();
-    let runs = parse(&text);
+    let runs = parse(&super::sys::log_history());
     unsafe {
         let Ok(instance) = GetModuleHandleW(None) else { return };
         let class = w!("VoraxRsRuns");

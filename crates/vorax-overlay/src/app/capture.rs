@@ -1,6 +1,10 @@
 //! Pictures of the game's window with Windows Graphics Capture: started only when a board needs reading, frames
 //! grabbed until two in a row look alike (the cards have landed), then stopped. The mouse is left out of the
 //! picture, and on Windows 11 no yellow border is drawn.
+//!
+//! Not in upstream: where Windows Graphics Capture can't be started, fails, or gives an all-black picture (seen on
+//! a player's PC we couldn't reproduce), the window is drawn into a bitmap with PrintWindow instead. A PC where the
+//! first works never uses the second.
 
 use super::sys::Hwnd;
 use vorax_scan::pixels::Img;
@@ -15,10 +19,18 @@ use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::Win32::System::WinRT::Direct3D11::{CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess};
 use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemInterop;
 
-pub struct Capturer {
+/// Windows Graphics Capture's devices.
+struct Wgc {
     device: ID3D11Device,
     context: ID3D11DeviceContext,
     rt_device: IDirect3DDevice,
+}
+
+pub struct Capturer {
+    /// None where Windows Graphics Capture couldn't be set up: PrintWindow alone
+    wgc: Option<Wgc>,
+    /// whether the fallback has been noted in the log (once a run)
+    noted: std::cell::Cell<bool>,
 }
 
 struct Session {
@@ -34,7 +46,81 @@ impl Drop for Session {
 }
 
 impl Capturer {
-    pub fn new() -> windows::core::Result<Capturer> {
+    /// Windows Graphics Capture if it can be set up, else PrintWindow alone (noted in the log).
+    pub fn new() -> Capturer {
+        let wgc = Wgc::new().map_err(|e| super::sys::note(&format!("screen capture: Windows Graphics Capture couldn't start ({e}): PrintWindow instead"))).ok();
+        Capturer { wgc, noted: std::cell::Cell::new(false) }
+    }
+
+    /// One picture now (as the hotkey asks).
+    pub fn grab(&self, hwnd: Hwnd) -> windows::core::Result<Option<Img>> {
+        self.or_print(hwnd, self.wgc.as_ref().map(|w| w.grab(hwnd)))
+    }
+
+    /// Pictures every 150 ms until two in a row look alike (the cards have stopped moving), at most 2.5 s.
+    pub fn grab_stable(&self, hwnd: Hwnd) -> windows::core::Result<Option<Img>> {
+        let got = self.wgc.as_ref().map(|w| w.grab_stable(hwnd));
+        if matches!(&got, Some(Ok(Some(img))) if !black(img)) {
+            return got.unwrap();
+        }
+        // PrintWindow's own wait for the cards to land
+        let print = || print_window(hwnd).map(|o| o.filter(|img| !black(img)));
+        let Some(mut frame) = self.fallback(hwnd, &got, print())? else { return Ok(None) };
+        let (t0, mut prev, mut still) = (std::time::Instant::now(), thumb(&frame), 0);
+        while t0.elapsed().as_millis() < 2500 {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            let Ok(Some(f)) = print() else { break };
+            let t = thumb(&f);
+            still = if frame_diff(&prev, &t) < 1.5 { still + 1 } else { 0 };
+            frame = f;
+            if still >= 2 {
+                break;
+            }
+            prev = t;
+        }
+        Ok(Some(frame))
+    }
+
+    /// Windows Graphics Capture's picture when it gave one that isn't all black, else PrintWindow's.
+    fn or_print(&self, hwnd: Hwnd, got: Option<windows::core::Result<Option<Img>>>) -> windows::core::Result<Option<Img>> {
+        if matches!(&got, Some(Ok(Some(img))) if !black(img)) {
+            return got.unwrap();
+        }
+        let print = print_window(hwnd).map(|o| o.filter(|img| !black(img)));
+        self.fallback(hwnd, &got, print)
+    }
+
+    /// PrintWindow's picture, noted the first time; when it has none either, what Windows Graphics Capture gave.
+    fn fallback(&self, _hwnd: Hwnd, got: &Option<windows::core::Result<Option<Img>>>, print: windows::core::Result<Option<Img>>) -> windows::core::Result<Option<Img>> {
+        let why = match got {
+            None => "not available".to_string(),
+            Some(Err(e)) => format!("failed: {e}"),
+            Some(Ok(None)) => "gave no picture".to_string(),
+            Some(Ok(Some(_))) => "gave an all-black picture".to_string(),
+        };
+        match print {
+            Ok(Some(img)) => {
+                if !self.noted.replace(true) {
+                    super::sys::note(&format!("screen capture: Windows Graphics Capture {why}: PrintWindow's picture used"));
+                }
+                Ok(Some(img))
+            }
+            other => {
+                super::sys::note(&format!("screen capture: Windows Graphics Capture {why}; PrintWindow: {}", match &other {
+                    Ok(_) => "no picture or all black".to_string(),
+                    Err(e) => e.to_string(),
+                }));
+                match got {
+                    Some(Err(e)) => Err(e.clone()),
+                    _ => Ok(None),
+                }
+            }
+        }
+    }
+}
+
+impl Wgc {
+    fn new() -> windows::core::Result<Wgc> {
         unsafe {
             let mut device = None;
             let mut context = None;
@@ -42,7 +128,7 @@ impl Capturer {
             let device: ID3D11Device = device.unwrap();
             let dxgi: IDXGIDevice = device.cast()?;
             let rt_device: IDirect3DDevice = CreateDirect3D11DeviceFromDXGIDevice(&dxgi)?.cast()?;
-            Ok(Capturer { device, context: context.unwrap(), rt_device })
+            Ok(Wgc { device, context: context.unwrap(), rt_device })
         }
     }
 
@@ -109,14 +195,12 @@ impl Capturer {
         }
     }
 
-    /// One picture now (as the hotkey asks).
-    pub fn grab(&self, hwnd: Hwnd) -> windows::core::Result<Option<Img>> {
+    fn grab(&self, hwnd: Hwnd) -> windows::core::Result<Option<Img>> {
         let s = self.start(hwnd)?;
         Ok(self.latest(&s, 1000)?.map(|img| client_only(hwnd, img)))
     }
 
-    /// Pictures every 150 ms until two in a row look alike (the cards have stopped moving), at most 2.5 s.
-    pub fn grab_stable(&self, hwnd: Hwnd) -> windows::core::Result<Option<Img>> {
+    fn grab_stable(&self, hwnd: Hwnd) -> windows::core::Result<Option<Img>> {
         let s = self.start(hwnd)?;
         let t0 = std::time::Instant::now();
         let Some(mut frame) = self.latest(&s, 1000)? else { return Ok(None) };
@@ -134,6 +218,55 @@ impl Capturer {
             prev = t;
         }
         Ok(Some(client_only(hwnd, frame)))
+    }
+}
+
+/// Whether a picture is all black (or nearly): what a capture gives some windows it can't see into.
+fn black(img: &Img) -> bool {
+    let (mut sum, mut n) = (0u64, 0u64);
+    for p in img.data.chunks_exact(4).step_by(97) {
+        sum += p[0] as u64 + p[1] as u64 + p[2] as u64;
+        n += 1;
+    }
+    n == 0 || sum < n * 3 * 4
+}
+
+/// The window's client area drawn by PrintWindow (PW_RENDERFULLCONTENT: DirectX content included, Windows 8.1 on).
+fn print_window(hwnd: Hwnd) -> windows::core::Result<Option<Img>> {
+    use windows::Win32::Graphics::Gdi::*;
+    use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
+    let Some((_, _, w, h)) = super::sys::client_rect(hwnd) else { return Ok(None) };
+    if w <= 0 || h <= 0 {
+        return Ok(None);
+    }
+    unsafe {
+        let screen = GetDC(windows::Win32::Foundation::HWND::default());
+        let dc = CreateCompatibleDC(screen);
+        let bmp = CreateCompatibleBitmap(screen, w, h);
+        let old = SelectObject(dc, bmp);
+        // PW_CLIENTONLY | PW_RENDERFULLCONTENT
+        let ok = PrintWindow(hwnd.get(), dc, PRINT_WINDOW_FLAGS(0x1 | 0x2)).as_bool();
+        let mut out = None;
+        if ok {
+            let mut bi = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER { biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32, biWidth: w, biHeight: -h, biPlanes: 1, biBitCount: 32, biCompression: BI_RGB.0, ..Default::default() },
+                ..Default::default()
+            };
+            let mut bgra = vec![0u8; w as usize * h as usize * 4];
+            let lines = GetDIBits(dc, bmp, 0, h as u32, Some(bgra.as_mut_ptr() as *mut _), &mut bi, DIB_RGB_COLORS);
+            if lines == h {
+                let mut img = Img::new(w as usize, h as usize);
+                for (d, s) in img.data.chunks_exact_mut(4).zip(bgra.chunks_exact(4)) {
+                    d.copy_from_slice(&[s[2], s[1], s[0], 255]);
+                }
+                out = Some(img);
+            }
+        }
+        SelectObject(dc, old);
+        let _ = DeleteObject(bmp);
+        let _ = DeleteDC(dc);
+        ReleaseDC(windows::Win32::Foundation::HWND::default(), screen);
+        Ok(out)
     }
 }
 

@@ -49,13 +49,7 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
         let _ = tx.send(m);
         waker.wake();
     };
-    let capturer = match Capturer::new() {
-        Ok(c) => c,
-        Err(e) => {
-            note(&format!("no screen capture: {e}"));
-            return;
-        }
-    };
+    let capturer = Capturer::new();
     let mut ocr = if opts.ocr { make_ocr(opts.ocr_lang.as_deref(), &send) } else { None };
     if let Some(dir) = &opts.frames {
         note(&format!("saving every picture read to {}", dir.display()));
@@ -247,6 +241,15 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
             // the look again after a pick, to settle the new icon, or at a board not fully read: the board hasn't
             // changed, so the marks stay up while it reads and only change if what it finds does
             let only_reread = reread && !relook && due.is_none() && !manual && again.is_none();
+            // not in upstream: Ctrl+Alt+X once the log said the Vorax screen closed reads nothing (the town was taken
+            // for a board, with ? and 空 over it, read for 20-60 s, and counted as a run)
+            if manual && due.is_none() && settler.over {
+                note("Ctrl+Alt+X: the game's Vorax screen is closed (its log says so): nothing read");
+                send(ToUi::Clear);
+                send(ToUi::NotVorax);
+                std::thread::sleep(Duration::from_millis(50));
+                continue;
+            }
             let quiet = (relook || reread) && due.is_none() && !manual && again.is_none();
             let label = if only_reread { "reread" } else { "manual" };
             let (animating, missed, kept) = read(&capturer, ocr.as_ref(), &mut pipe, trigger, label, manual || relook || reread, quiet, opts.frames.as_deref(), &send);
@@ -358,15 +361,18 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
         Ok(Some(f)) => f,
         Ok(None) => {
             note("no picture from the game's window");
+            send(ToUi::Capture(false));
             send(ToUi::Unbusy);
             return (false, false, None);
         }
         Err(e) => {
             note(&format!("capture failed: {e}"));
+            send(ToUi::Capture(false));
             send(ToUi::Unbusy);
             return (false, false, None);
         }
     };
+    send(ToUi::Capture(true));
     let grabbed = t.elapsed().as_millis();
     // what the text reader made of each card title, for the debug log (a card not read shows why)
     let mut ocr_texts: Vec<String> = Vec::new();

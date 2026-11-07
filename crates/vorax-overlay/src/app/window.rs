@@ -42,6 +42,13 @@ pub enum ToUi {
     Restart(PathBuf),
     /// the toolbox: the check for a newer release found none
     UpToDate,
+    /// not in upstream: whether the last try got a picture of the game (the main window's red dot when not)
+    Capture(bool),
+    /// not in upstream: Ctrl+Alt+X pressed after the game's Vorax screen closed (nothing is read: the town would be
+    /// taken for a board, and read for half a minute)
+    NotVorax,
+    /// the toolbox: the check for a newer release couldn't reach GitHub (not in upstream: it said "the latest")
+    CheckFailed,
     /// the toolbox: Windows' text reader in use (its language), or none
     Ocr(Option<String>),
     /// the toolbox: the game's log followed (None: not found), and whether it was chosen by hand
@@ -176,6 +183,11 @@ struct State {
     last_read: Option<(String, bool, std::time::Instant)>,
     running: bool,
     up_to_date: bool,
+    /// not in upstream: the last check couldn't reach GitHub; the last update's download failed (why)
+    check_failed: bool,
+    update_error: Option<String>,
+    /// not in upstream: whether the last try got a picture of the game (None: none tried yet)
+    capture_ok: Option<bool>,
     /// the statistics, as last counted from the log (counting reads a few MB: not at every refresh)
     stats: Option<((usize, usize, f64), std::time::Instant)>,
     /// pictures set aside for the report (Ctrl+Alt+B), and the last report's zip
@@ -247,7 +259,7 @@ pub fn create(fonts: Fonts, rx: Receiver<ToUi>, to_self: Sender<ToUi>, tx: Sende
         super::hub::set_handler(from_hub);
         super::hub::set_close_handler(hub_closed);
         STATE.with(|s| {
-            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, show_read: true, to_self, update: None, updating: None, args, ocr: None, log_file: None, log_manual: false, last_read: None, running: true, up_to_date: false, stats: None, marked: super::report::marked(), report: None, tart: super::tartarus::Tart::default(), tart_latest: None, tart_version: None, game_open: find_game_window().is_some(), asks: Vec::new(), ask_frame: (0, 0), learned: 0, test_picker: false, ask_shown: false });
+            *s.borrow_mut() = Some(State { hwnd, fonts: Rc::new(fonts), rx, tx, plan: None, busy: false, frame: (0, 0), settings, placed: None, visible: false, game_log: None, log_help_shown: false, show_read: true, to_self, update: None, updating: None, args, ocr: None, log_file: None, log_manual: false, last_read: None, running: true, up_to_date: false, check_failed: false, update_error: None, capture_ok: None, stats: None, marked: super::report::marked(), report: None, tart: super::tartarus::Tart::default(), tart_latest: None, tart_version: None, game_open: find_game_window().is_some(), asks: Vec::new(), ask_frame: (0, 0), learned: 0, test_picker: false, ask_shown: false });
         });
         // a 囚獸助手 left running hidden by a toolbox before this one (an update's restart): looked after again
         with_state(|s| s.tart.adopt());
@@ -313,11 +325,19 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                             let new = s.update.as_ref().is_none_or(|u| u.version != r.version);
                             s.update = Some(r);
                             s.up_to_date = false;
+                            s.check_failed = false;
                             if new && !super::hub::shown() {
                                 update_offer(s);
                             }
                         }
-                        ToUi::UpToDate => s.up_to_date = true,
+                        ToUi::UpToDate => {
+                            s.up_to_date = true;
+                            s.check_failed = false;
+                        }
+                        ToUi::CheckFailed => {
+                            s.up_to_date = false;
+                            s.check_failed = true;
+                        }
                         ToUi::Ocr(o) => s.ocr = Some(o),
                         ToUi::LogFile(p, manual) => {
                             s.log_file = p;
@@ -331,6 +351,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                                 }
                                 Err(e) => vec![Row::Header { title: tr("沒有可記下的畫面", "No picture to set aside"), status: e.clone() }],
                             };
+                            super::menu::notify(s.hwnd, rows, s.fonts.clone());
+                            unsafe {
+                                SetTimer(s.hwnd, TIMER_CARD, 2500, None);
+                            }
+                        }
+                        ToUi::Capture(ok) => s.capture_ok = Some(ok),
+                        ToUi::NotVorax => {
+                            let rows = vec![Row::Header { title: tr("現在不是渴癮畫面", "Not the Vorax screen"), status: tr("在渴癮畫面時會自動讀取", "boards are read there by themselves") }];
                             super::menu::notify(s.hwnd, rows, s.fonts.clone());
                             unsafe {
                                 SetTimer(s.hwnd, TIMER_CARD, 2500, None);
@@ -363,8 +391,16 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                         ToUi::UpdateFailed(e) => {
                             s.updating = None;
                             note(&format!("update failed: {e}"));
+                            s.update_error = Some(e.clone());
                             let mut rows = vec![Row::Header { title: tr("更新失敗", "The update failed"), status: if english() { format!("still v{}", update::current()) } else { format!("繼續使用 v{}", update::current()) } }];
-                            rows.push(Row::Lines(wrap(&s.fonts, &e, 6)));
+                            // not in upstream: what to do, in the player's language, before the error itself
+                            if english() {
+                                rows.push(Row::Lines(wrap(&s.fonts, "With an unsteady connection, press Update now again later, or download it yourself: SmartTorch on GitHub.", 4)));
+                            } else {
+                                rows.push(Row::Text("連線有問題時，請稍後再按「立即更新」，".into()));
+                                rows.push(Row::Text("可到 GitHub 下載最新版。".into()));
+                            }
+                            rows.push(Row::Lines(wrap(&s.fonts, &e, 4)));
                             rows.push(Row::Buttons { primary: (MENU_LATER, tr("確定", "OK")), secondary: None });
                             if !super::menu::refresh(rows.clone()) {
                                 super::menu::notify(s.hwnd, rows, s.fonts.clone());
@@ -628,6 +664,7 @@ fn start_update(s: &mut State) {
         return;
     }
     s.updating = Some(0.0);
+    s.update_error = None;
     note(&format!("downloading v{} from {}", r.version, r.page));
     let (tx, waker) = (s.to_self.clone(), Waker(Hwnd::of(s.hwnd)));
     std::thread::spawn(move || {
@@ -897,6 +934,8 @@ fn state_json(s: &mut State) -> String {
         "update": s.update.as_ref().map(|r| serde_json::json!({ "version": r.version, "notes": r.notes, "page": r.page })),
         "updating": s.updating,
         "upToDate": s.up_to_date,
+        "checkFailed": s.check_failed,
+        "updateError": s.update_error.is_some(),
         "boot": super::sys::starts_with_windows(),
         "autoVorax": s.settings.auto_vorax(),
         "autoTartarus": s.settings.auto_tartarus(),
@@ -915,6 +954,7 @@ fn state_json(s: &mut State) -> String {
             "testPicker": s.test_picker,
             "game": { "open": game.is_some(), "w": size.map(|x| x.0), "h": size.map(|x| x.1), "fullScreen": game.is_some() && super::sys::exclusive_full_screen() },
             "log": { "state": log, "path": s.log_file.as_ref().map(|p| p.display().to_string()), "manual": s.log_manual },
+            "capture": s.capture_ok,
             "ocr": match &s.ocr { None => serde_json::Value::Null, Some(None) => serde_json::Value::Bool(false), Some(Some(l)) => serde_json::Value::String(l.clone()) },
             "last": s.last_read.as_ref().map(|(t, warn, at)| serde_json::json!({ "text": t, "warn": warn, "ago": at.elapsed().as_secs() })),
             "stats": { "games": stats.0, "rainbow": stats.1, "mean": stats.2 },
@@ -1104,7 +1144,11 @@ fn from_hub(text: &str) {
                 }
                 let _ = tx.send(match update::check() {
                     Ok(Some(r)) => ToUi::Update(r),
-                    _ => ToUi::UpToDate,
+                    Ok(None) => ToUi::UpToDate,
+                    Err(e) => {
+                        note(&format!("couldn't check for a newer release: {e}"));
+                        ToUi::CheckFailed
+                    }
                 });
                 waker.wake();
             });

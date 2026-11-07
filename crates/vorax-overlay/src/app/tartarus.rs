@@ -261,7 +261,14 @@ impl Tart {
                     self.shown = false;
                     self.stop_at = None;
                 }
-                if self.want && !starting {
+                // not in upstream: a TartarusSolver.exe without its window is its own update at work (the new
+                // version copying itself over this install once the old one exited): started again meanwhile, the
+                // old files were held open and the update failed, so it's left alone until its window is back
+                if self.want && !starting && any_running() {
+                    if self.gone_since.take().is_some() {
+                        note("Tartarus Solver is running without its window (updating itself?): not started again");
+                    }
+                } else if self.want && !starting {
                     let since = *self.gone_since.get_or_insert_with(Instant::now);
                     if since.elapsed() > GONE {
                         if let Some(exe) = exe {
@@ -273,6 +280,30 @@ impl Tart {
             }
         }
         before != (self.running, self.shown)
+    }
+}
+
+/// Whether any TartarusSolver.exe runs (from any folder: its update runs from %LOCALAPPDATA%\TartarusSolver\update).
+fn any_running() -> bool {
+    use windows::Win32::System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS};
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return false };
+        let mut e = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        let mut found = false;
+        if Process32FirstW(snap, &mut e).is_ok() {
+            loop {
+                let len = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(e.szExeFile.len());
+                if String::from_utf16_lossy(&e.szExeFile[..len]).eq_ignore_ascii_case(EXE) {
+                    found = true;
+                    break;
+                }
+                if Process32NextW(snap, &mut e).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snap);
+        found
     }
 }
 

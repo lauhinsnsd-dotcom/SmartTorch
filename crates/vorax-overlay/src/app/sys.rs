@@ -214,12 +214,30 @@ pub fn data_dir() -> PathBuf {
     d
 }
 
-/// A line in the debug log (%APPDATA%\VoraxRs\overlay.log), kept under 2 MB.
+/// The debug logs before the current one, newest first (not in upstream, which kept one: the runs and statistics
+/// come from the logs, and the older half of them went at every 2 MB, after about a hundred runs).
+pub const OLD_LOGS: [&str; 4] = ["overlay.log.old", "overlay.log.old2", "overlay.log.old3", "overlay.log.old4"];
+
+/// Every debug log kept, oldest first, as one text (the runs and their statistics).
+pub fn log_history() -> String {
+    let dir = data_dir();
+    let mut text = String::new();
+    for name in OLD_LOGS.iter().rev().chain(std::iter::once(&"overlay.log")) {
+        text.push_str(&std::fs::read_to_string(dir.join(name)).unwrap_or_default());
+    }
+    text
+}
+
+/// A line in the debug log (%APPDATA%\VoraxRs\overlay.log), kept under 2 MB; the ones before it in OLD_LOGS.
 pub fn note(msg: &str) {
     use std::io::Write;
     let path = data_dir().join("overlay.log");
     if std::fs::metadata(&path).is_ok_and(|m| m.len() > 2_000_000) {
-        let _ = std::fs::rename(&path, data_dir().join("overlay.log.old"));
+        let dir = data_dir();
+        for i in (1..OLD_LOGS.len()).rev() {
+            let _ = std::fs::rename(dir.join(OLD_LOGS[i - 1]), dir.join(OLD_LOGS[i]));
+        }
+        let _ = std::fs::rename(&path, dir.join(OLD_LOGS[0]));
     }
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
     let line = format!("{secs:.3} {msg}\n");

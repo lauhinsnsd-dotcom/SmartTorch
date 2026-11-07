@@ -72,7 +72,7 @@ pub fn clear() {
 pub fn clear_all() {
     clear();
     let dir = data_dir();
-    for name in ["overlay.log", "overlay.log.old"] {
+    for name in std::iter::once("overlay.log").chain(super::sys::OLD_LOGS) {
         let _ = std::fs::remove_file(dir.join(name));
     }
 }
@@ -95,7 +95,7 @@ fn desktop() -> PathBuf {
     std::env::var("USERPROFILE").map(PathBuf::from).unwrap_or_else(|_| std::env::temp_dir())
 }
 
-/// Packs the report: the marked pictures (else the last 5 read), the debug log (and the one before it), the
+/// Packs the report: the marked pictures (else the last 5 read), the debug logs kept, the
 /// settings and the version. The marked pictures are cleared once packed. The zip's path.
 pub fn pack(version: &str) -> Result<PathBuf, String> {
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
@@ -114,7 +114,9 @@ pub fn pack(version: &str) -> Result<PathBuf, String> {
         }
     }
     let dir = data_dir();
-    for name in ["overlay.log.old", "overlay.log", "settings.json", "learned.json"] {
+    // every log kept (oldest first): the runs in them are what a report is checked against
+    let names: Vec<&str> = super::sys::OLD_LOGS.iter().rev().copied().chain(["overlay.log", "settings.json", "learned.json"]).collect();
+    for name in names {
         if let Ok(data) = std::fs::read(dir.join(name)) {
             files.push((name.to_string(), data));
         }
