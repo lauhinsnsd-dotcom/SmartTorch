@@ -3,6 +3,18 @@
 每個版本更新了什麼。有新版本時，SmartTorch 的更新提示也會顯示該版本的內容。
 What each version changed. When a new version is out, SmartTorch's update note shows its part.
 
+## v1.0.6
+
+**1920×1080 · 1920×1080**
+- 1920×1080 請把遊戲的「介面縮放」設為推薦值（按「使用推薦值」）或最小值，兩種都已實測讀得準。拉到最大時卡片位置對不上，會讀不到，暫不支援。 At 1920×1080, set the game's interface scale to its recommended value (Use Recommended) or the minimum: both are tested and read well. At the maximum the cards don't line up and aren't read, so it isn't supported for now.
+- 修正：用推薦值時，剛開啟 SmartTorch 的第一個畫面可能被當成「卡片還在飛」而讀不到。 Fixed: at the recommended scale, the first board after SmartTorch starts could be taken for a card still in flight and not read.
+- 設定說明與疑難排解已加入上述建議。 The guide and Troubleshooting now say so.
+
+**渴癮症助手 · Vorax helper**
+- 修正：手動選卡框未選就自己消失（按 Ctrl+Alt+B 記下畫面時，或重讀多認出一張卡時）。現在選卡框出現後不會再自動重讀，直到你選好，或自己在遊戲中選卡、刷新；按 Ctrl+Alt+X 仍可重讀，認出的卡會從選卡框移除。你選的卡一定生效。 Fixed: the picker's card closing before a pick (on Ctrl+Alt+B, or when a reread made out one more card). Once it's up, nothing is read by itself until you pick, or play the round in the game; Ctrl+Alt+X still reads, and the cards made out leave the picker. A card you pick always counts.
+- 修正：「藥劑箱（大）」常讀不到（括號內的字沒讀到，分不出大小），現在會用卡面圖案分辨。 Fixed: Potion Kit (Large) often not read (the size in brackets missed): its picture now tells the two apart.
+- 修正：同一系列的卡只讀到幾個字時（例如「孿生 - 骨」），讀到只屬於某一張的字就能認出。 Fixed: a card of a family read only in part (such as 孿生 - 骨) is told by the characters only that version has.
+
 ## v1.0.5
 
 **渴癮症助手 · Vorax helper**
