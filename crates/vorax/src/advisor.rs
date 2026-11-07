@@ -195,6 +195,32 @@ pub fn to_state(x: &ScreenState, unknown: &mut Vec<String>) -> GameState {
     }
 }
 
+/// The Ultimate Activity a game ends at from a board of its protocols (rounds 11-13), averaged over `samples` runs
+/// of the growth still to come: the last board read is round 13's protocol pick, before that round's own growth,
+/// and protocols change the battle, not the activity. Not in upstream (its statistics took the board as it was).
+pub fn final_activity(x: &ScreenState, samples: u32) -> f64 {
+    let mut start = to_state(x, &mut Vec::new());
+    start.phase = Phase::RoundEnd;
+    start.hand.clear();
+    clear_selection(&mut start);
+    let samples = samples.max(1);
+    let mut sum = 0.0;
+    for i in 0..samples {
+        let mut s = GameState { rng_state: SEED.wrapping_add(i.wrapping_mul(0x9E37_79B9)), ..start };
+        // one round at a time to the end (no instrument offers come in the protocols)
+        while s.phase == Phase::RoundEnd {
+            s = crate::game::dispatch(&s, Action::Confirm);
+        }
+        sum += ultimate_activity(&s) as f64;
+    }
+    sum / samples as f64
+}
+
+fn clear_selection(s: &mut GameState) {
+    s.selected = None;
+    s.targets.clear();
+}
+
 /// The futures a board's advice needs, so slices of them can be played on other cores.
 #[derive(Clone, Debug)]
 pub enum Work {

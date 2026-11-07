@@ -16,6 +16,7 @@ What each version changed. When a new version is out, SmartTorch's update note s
 - 在城鎮等地方按 Ctrl+Alt+X 不再讀出錯誤內容，會提示「現在不是渴癮畫面」。 Ctrl+Alt+X outside Vorax no longer reads the town as a board: it says it isn't the Vorax screen.
 - 減少卡頓：計算讓出 CPU 給遊戲（較低優先級，並留 1–2 個核心）。 Fewer hitches: the advice leaves the game the CPU first (below normal priority, a core or two left free).
 - Windows 截圖失敗或全黑時，自動改用另一種方式；仍擷取不到畫面時，「遊戲視窗」顯示紅點，疑難排解有處理方法。 When Windows' capture fails or comes back black, another way is used; still no picture, the Game window line shows a red dot, with what to do in Troubleshooting.
+- 修正：實戰統計少計了最後一回合的增長（最後讀到的是第 13 回合選手術方案的畫面，之後活性還會再長一次），有些過了 84 萬的局沒算進去。現在以最後讀到的局面加上之後的增長計算最終分數；「彩箱局數」改名為「84萬以上局數」。 Fixed: your results left out the last round's growth (the last board read is round 13's protocol pick, and the activity grows once more after it), so some runs past 840k weren't counted. The final score is now the last board read with the growth after it; "彩箱局數" is now "84萬以上局數".
 - 對局紀錄保留多 4 倍，打幾百局統計也不會減少；回報問題會附上全部紀錄。 Four times the runs are kept, so the statistics last for hundreds of runs; reports carry them all.
 - 紀錄和回報檔不再含電腦使用者名稱（路徑中的使用者資料夾顯示為 %USERPROFILE%），公開貼出也不會洩露。 Logs and reports no longer carry the PC's user name (the home folder in paths shows as %USERPROFILE%), so they can be posted in public.
 - 移除 Ctrl+Alt+Q（關閉 SmartTorch）；請用右下角圖示右鍵 →「結束」。 Ctrl+Alt+Q (quit) is gone: right-click the tray icon → Quit.

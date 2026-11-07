@@ -31,6 +31,12 @@ struct Board {
     instruments: Vec<String>,
     tanks: String,
     score: i64,
+    /// the activity the game ends at: a protocol board's (rounds 11-13) with the growth still to come after it
+    /// (`vorax::advisor::final_activity`; the last board read is round 13's pick, before its growth), else `score`.
+    /// Not in upstream.
+    end: i64,
+    /// a protocol board as read, for `end`
+    screen: Option<vorax::advisor::ScreenState>,
 }
 
 /// The advice's mode a run was played in (not in upstream), from the log's "mode:" lines.
@@ -125,6 +131,17 @@ fn zh_card(name: &str) -> String {
     [&z.instrument, &z.potion, &z.protocol].iter().find_map(|m| m.get(name).and_then(|f| f.first().cloned())).unwrap_or_else(|| name.to_string())
 }
 
+/// " · 最終 909,612": what a run read in its protocols ended at, when the growth after the board read adds to it.
+fn ends(b: &Board, en: bool) -> String {
+    if b.end == b.score {
+        String::new()
+    } else if en {
+        format!(" · ended {}", thousands(b.end))
+    } else {
+        format!(" · 最終 {}", thousands(b.end))
+    }
+}
+
 fn parse(text: &str) -> Vec<Run> {
     let mut runs: Vec<Run> = Vec::new();
     let mut open = false;
@@ -193,6 +210,8 @@ fn parse(text: &str) -> Vec<Run> {
                 .collect::<Vec<_>>()
                 .join("  ·  "),
             score,
+            end: score,
+            screen: if round >= 11 { serde_json::from_value::<vorax::advisor::ScreenState>(s.clone()).ok().map(|x| vorax::advisor::ScreenState { round: Some(round as i32), ..x }) } else { None },
         };
         // a new run: when the round goes back (a new game), or after the screen closed when it opens on a new game
         // (round 1, whatever is in the instrument panel: a new game can start with a boss drop in it); opened again on
@@ -215,6 +234,13 @@ fn parse(text: &str) -> Vec<Run> {
         run.boards.push(board);
     }
     runs.retain(|r| !r.boards.is_empty());
+    // how each run read in its protocols ended: its last board with the growth still to come after it
+    for r in &mut runs {
+        let last = r.boards.last_mut().unwrap();
+        if let Some(x) = &last.screen {
+            last.end = vorax::advisor::final_activity(x, 64).round() as i64;
+        }
+    }
     runs.reverse();
     runs
 }
@@ -231,14 +257,14 @@ fn summary(runs: &[Run]) -> Vec<String> {
             continue;
         }
         let n = done.len();
-        let won = done.iter().filter(|r| r.last().score >= 840_000).count();
+        let won = done.iter().filter(|r| r.last().end >= 840_000).count();
         let firsts: Vec<u32> = done.iter().filter_map(|r| r.first_pct()).collect();
         let mean_first = match (firsts.is_empty(), en) {
             (true, _) => String::new(),
             (false, false) => format!(" · 開局預計平均 {:.0}%", firsts.iter().sum::<u32>() as f64 / firsts.len() as f64),
             (false, true) => format!(" · expected at the start {:.0}% on average", firsts.iter().sum::<u32>() as f64 / firsts.len() as f64),
         };
-        let mean_score = done.iter().map(|r| r.last().score as f64).sum::<f64>() / n as f64;
+        let mean_score = done.iter().map(|r| r.last().end as f64).sum::<f64>() / n as f64;
         out.push(if en {
             format!("{name}: {n} runs · {won} reached 840k ({:.0}%){mean_first} · mean {:.0}k", won as f64 / n as f64 * 100.0, mean_score / 1000.0)
         } else {
@@ -250,7 +276,7 @@ fn summary(runs: &[Run]) -> Vec<String> {
                 .iter()
                 .filter_map(|&(lo, hi, label)| {
                     let these: Vec<&&Run> = done.iter().filter(|r| r.first_pct().is_some_and(|p| p >= lo && p < hi)).collect();
-                    (!these.is_empty()).then(|| format!("{label} {}/{}", these.iter().filter(|r| r.last().score >= 840_000).count(), these.len()))
+                    (!these.is_empty()).then(|| format!("{label} {}/{}", these.iter().filter(|r| r.last().end >= 840_000).count(), these.len()))
                 })
                 .collect();
             out.push(if en { format!("  expected → reached: {}", parts.join(" · ")) } else { format!("　預計 → 實際 84萬以上：{}", parts.join(" · ")) });
@@ -270,8 +296,8 @@ fn stats_of(text: &str, aggressive: bool, since: f64) -> (usize, usize, f64) {
     let runs = parse(text);
     let done: Vec<&Run> = runs.iter().filter(|r| r.mode == mode && r.finished() && r.at >= since).collect();
     let n = done.len();
-    let won = done.iter().filter(|r| r.last().score >= 840_000).count();
-    let mean = if n == 0 { 0.0 } else { done.iter().map(|r| r.last().score as f64).sum::<f64>() / n as f64 / 10_000.0 };
+    let won = done.iter().filter(|r| r.last().end >= 840_000).count();
+    let mean = if n == 0 { 0.0 } else { done.iter().map(|r| r.last().end as f64).sum::<f64>() / n as f64 / 10_000.0 };
     (n, won, mean)
 }
 
@@ -581,7 +607,7 @@ fn render(v: &View) -> Pixmap {
                 }
                 let path: Vec<String> = odds.iter().map(|(rd, p)| format!("R{rd} {p}%")).collect();
                 let tail = if path.is_empty() { String::new() } else { format!(" · {}", path.join(" → ")) };
-                let line2 = if english() { format!("Round {} · last read {} · {} boards{tail}", last.round, thousands(last.score), r.boards.len()) } else { format!("第 {} 回合 · 最後讀到 {} · {} 個畫面{tail}", last.round, thousands(last.score), r.boards.len()) };
+                let line2 = if english() { format!("Round {} · last read {}{} · {} boards{tail}", last.round, thousands(last.score), ends(last, true), r.boards.len()) } else { format!("第 {} 回合 · 最後讀到 {}{} · {} 個畫面{tail}", last.round, thousands(last.score), ends(last, false), r.boards.len()) };
                 text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, &line2, 12.5 * s, lw - 70.0 * s), 12.5 * s, 42.0 * s, y0 + 46.0 * s, soft, 1.0);
                 let inst = if last.instruments.is_empty() { tr("沒有讀到手術用具", "no instruments read") } else { last.instruments.join("  ·  ") };
                 text(&mut list, &v.fonts.regular, &fit(&v.fonts.regular, &inst, 12.0 * s, lw - 70.0 * s), 12.0 * s, 42.0 * s, y0 + 62.0 * s, dim, 1.0);
