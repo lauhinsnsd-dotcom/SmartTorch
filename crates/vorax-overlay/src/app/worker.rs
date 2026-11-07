@@ -29,6 +29,8 @@ const RELOOK: Duration = Duration::from_millis(1500);
 /// A card still in flight: the board is looked at again this much later, this many times, before its marks are
 /// hidden (the board they were for is gone, and no log line may come to say when the new one has landed).
 const RETRY: Duration = Duration::from_millis(700);
+/// Not in upstream: how often, with marks up, the game is looked at for the Vorax screen still being there.
+const LOOK_EVERY: Duration = Duration::from_secs(5);
 const RETRIES: u32 = 3;
 /// not in upstream: a board with a card or tank not read is read again this much later, up to this many times (the
 /// player's hand over a card, a light sweeping the screen), before the hint is left to Ctrl+Alt+X
@@ -80,6 +82,10 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
     let mut reread_at: Option<Instant> = None;
     let mut rereads = 0;
     let mut was_over = false;
+    // not in upstream: marks on the game, and the look at whether the Vorax screen is still there: when, and how
+    // many in a row found it gone (the log doesn't always say it closed: the marks stayed over the town)
+    let mut marks_up = false;
+    let (mut last_look, mut not_vorax) = (Instant::now(), 0);
     // the game's log: when it last had a game line, since when the game is open, and what the window was told
     let mut game_line_at: Option<Instant> = None;
     let mut game_open_since: Option<Instant> = None;
@@ -193,6 +199,7 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
             }
             if settler.over && !was_over {
                 note("the game's Vorax screen closed");
+                marks_up = false;
                 send(ToUi::Clear);
                 retry = None;
                 reread_at = None;
@@ -228,6 +235,32 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
                 send(ToUi::GameLog(state));
             }
         }
+        // not in upstream: every 5 s with marks up and nothing else to read, a quick look (no text reader) at whether
+        // the game still shows the Vorax screen; twice in a row not: the marks (and the picker's card) close
+        if marks_up && last_look.elapsed() >= LOOK_EVERY && retry.is_none() && reread_at.is_none() && relook_at.is_none() {
+            last_look = Instant::now();
+            if let Some(game) = find_game_window().filter(|&g| super::sys::foreground() == g) {
+                if let Ok(Some(img)) = capturer.grab(game) {
+                    let (ui, dy) = pipe.last_place();
+                    if crate::pipeline::still_vorax(&img, ui, dy) {
+                        not_vorax = 0;
+                    } else {
+                        not_vorax += 1;
+                        if not_vorax >= 2 {
+                            note("the Vorax screen is gone from the game (looked twice), though the log didn't say: the marks close");
+                            marks_up = false;
+                            not_vorax = 0;
+                            send(ToUi::Clear);
+                            if !asked.is_empty() {
+                                asked.clear();
+                                asked_slots.clear();
+                                send(ToUi::AskClose);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let due = settler.due(now_ms());
         let relook = relook_at.is_some_and(|t| Instant::now() >= t);
         let again = retry.filter(|(t, _)| Instant::now() >= *t);
@@ -259,7 +292,11 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
             }
             let quiet = (relook || reread) && due.is_none() && !manual && again.is_none();
             let label = if only_reread { "reread" } else { "manual" };
-            let (animating, missed, kept) = read(&capturer, ocr.as_ref(), &mut pipe, trigger, label, manual || relook || reread, quiet, opts.frames.as_deref(), &send);
+            let (animating, missed, kept, advised) = read(&capturer, ocr.as_ref(), &mut pipe, trigger, label, manual || relook || reread, quiet, opts.frames.as_deref(), &send);
+            if let Some(a) = advised {
+                marks_up = a;
+            }
+            (last_look, not_vorax) = (Instant::now(), 0);
             if kept.is_some() {
                 last_kept = kept;
             }
@@ -354,10 +391,10 @@ fn make_ocr(lang: Option<&str>, send: &dyn Fn(ToUi)) -> Option<Ocr> {
     }
 }
 
-fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Option<&str>, label: &str, now: bool, quiet: bool, frames: Option<&Path>, send: &dyn Fn(ToUi)) -> (bool, bool, Option<PathBuf>) {
+fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Option<&str>, label: &str, now: bool, quiet: bool, frames: Option<&Path>, send: &dyn Fn(ToUi)) -> (bool, bool, Option<PathBuf>, Option<bool>) {
     let Some(game) = find_game_window() else {
         note("the game's window isn't open");
-        return (false, false, None);
+        return (false, false, None, None);
     };
     if !quiet {
         send(ToUi::Busy);
@@ -370,13 +407,13 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
             note("no picture from the game's window");
             send(ToUi::Capture(false));
             send(ToUi::Unbusy);
-            return (false, false, None);
+            return (false, false, None, None);
         }
         Err(e) => {
             note(&format!("capture failed: {e}"));
             send(ToUi::Capture(false));
             send(ToUi::Unbusy);
-            return (false, false, None);
+            return (false, false, None, None);
         }
     };
     send(ToUi::Capture(true));
@@ -405,6 +442,7 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
         Outcome::Closing => "closing",
     };
     let animating = matches!(outcome, Outcome::Animating);
+    let advised = matches!(outcome, Outcome::Advice { .. });
     let missed = match &outcome {
         Outcome::Advice { reading, .. } => reading.state.phase != vorax::advisor::ScreenPhase::Protocol && !crate::draw::not_read(reading).is_empty(),
         _ => false,
@@ -448,7 +486,7 @@ fn read(capturer: &Capturer, ocr: Option<&Ocr>, pipe: &mut Pipeline, trigger: Op
             note(&format!("frame not saved: {e}"));
         }
     }
-    (animating, missed, kept)
+    (animating, missed, kept, (!animating).then_some(advised))
 }
 
 /// The toolbox's "last read" line: the screen and round, and what wasn't made out ("藥劑回合 5 · 第 2 張卡未讀到").

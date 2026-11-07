@@ -267,6 +267,11 @@ impl Pipeline {
     }
 
     /// The last board as read (with the picks in).
+    /// The interface scale and hand shift the last board was read at (1 and 0 before any).
+    pub fn last_place(&self) -> (f64, f64) {
+        self.last.as_ref().map_or((1.0, 0.0), |(r, ..)| (r.ui(), r.hand_dy.unwrap_or(0.0)))
+    }
+
     pub fn last_reading(&self) -> Option<&Reading> {
         self.last.as_ref().map(|(r, ..)| r)
     }
@@ -407,6 +412,37 @@ fn encode_png_with(path: &std::path::Path, w: u32, h: u32, rgba: &[u8], level: p
     wr.write_image_data(rgba).map_err(|e| e.to_string())
 }
 
+/// Not in upstream: whether a picture still shows the Vorax screen, cheaply (the hand's header, else the round's
+/// number around its place; no tanks, cards or text reader), at the interface scale and hand shift the last board
+/// was read at. For the marks left over the town when the log didn't say the screen closed.
+pub fn still_vorax(frame: &Img, ui: f64, hand_dy: f64) -> bool {
+    use vorax_scan::text::{read_text, TextKind};
+    let img = match windowed_game(frame) {
+        Some(a) => crop_to(frame, &a),
+        None => frame.clone(),
+    };
+    let data = scan_data();
+    let l = layout_at(img.width, img.height, ui);
+    if vorax_scan::cards::read_phase(&img, &l.shifted_hand(hand_dy), data).0.is_some() {
+        return true;
+    }
+    let g = vorax_scan::pixels::gray(&img);
+    let zh = data.digits_with_zh("round");
+    for refs in [&data.digits["round"], &zh] {
+        for dy in [0.0, 4.0, 8.0, 12.0, 16.0, 20.0, -4.0, -8.0] {
+            for dx in [0.0, -6.0, 6.0, -12.0, 12.0] {
+                let r = vorax_scan::pixels::Rect::new(l.round.x + dx * l.k, l.round.y + dy * l.k, l.round.w, l.round.h);
+                let Some(t) = read_text(&img, &g, &r, TextKind::Round, refs) else { continue };
+                let n: f64 = t.text.parse().unwrap_or(f64::NAN);
+                if n.fract() == 0.0 && (1.0..=13.0).contains(&n) && t.score >= 0.75 && t.score - t.second >= 0.05 {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::{resumes, Pipeline};
@@ -497,5 +533,28 @@ mod tests {
         assert!(!resumes(Some(6), None));
         // the overlay's first board
         assert!(!resumes(None, Some(6)));
+    }
+}
+
+#[cfg(test)]
+mod still_vorax_tests {
+    use super::{decode_png, still_vorax};
+
+    fn fixture(rel: &str) -> vorax_scan::pixels::Img {
+        decode_png(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures").join(rel)).unwrap()
+    }
+
+    /// Boards at the interface scale they were read at are the Vorax screen; the town (two of a player's pictures
+    /// taken there, shrunk) isn't, at any scale.
+    #[test]
+    fn the_vorax_screen_is_told_from_the_town() {
+        for (f, ui) in [("frames/board-012.png", 1.0), ("frames/protocol-018.png", 1.0), ("frames/board-1080p.png", 1.0), ("frames/windowed-2506.png", 1.0), ("frames/ui-125.png", 1.25), ("zh-frames/twin-hormone-1080p-ui125.png", 1.25), ("zh-frames/potion-kit-large-1080p-ui125.png", 1.25)] {
+            assert!(still_vorax(&fixture(f), ui, 0.0), "{f} at {ui}");
+        }
+        for f in ["not-vorax/town-1280.png", "not-vorax/town2-1280.png"] {
+            for ui in vorax_scan::layout::UI_SCALES {
+                assert!(!still_vorax(&fixture(f), ui, 0.0), "{f} at {ui}");
+            }
+        }
     }
 }
