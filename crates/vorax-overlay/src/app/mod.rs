@@ -239,8 +239,10 @@ pub fn run(args: &[String]) {
     // it (they took every core at normal priority: on a weaker PC the game hitched at each move)
     let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
     let threads = if cores >= 8 { cores - 2 } else { (cores - 1).max(1) };
-    let _ = rayon::ThreadPoolBuilder::new().num_threads(threads).start_handler(|_| sys::below_normal()).build_global();
-    sys::note(&format!("advice on {threads} of {cores} cores, below normal priority"));
+    match rayon::ThreadPoolBuilder::new().num_threads(threads).start_handler(|_| sys::below_normal()).build_global() {
+        Ok(()) => sys::note(&format!("advice on {threads} of {cores} cores, below normal priority")),
+        Err(e) => sys::note(&format!("advice's threads not set up ({e}): every core, normal priority")),
+    }
     let worker = std::thread::spawn(move || {
         sys::below_normal();
         worker::run(opts, to_ui, waker, from_ui)

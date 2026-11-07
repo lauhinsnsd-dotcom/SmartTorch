@@ -167,9 +167,20 @@ pub fn download(url: &str, size: u64, sha256: &str, progress: impl Fn(f32) + Sen
     let total = size.max(1) as f32;
     let mut bytes: Vec<u8> = Vec::with_capacity(size as usize);
     let (mut idle, mut wait) = (0, Duration::from_secs(2));
+    // one start over from nothing when a resumed download doesn't check out (its pieces didn't fit)
+    let mut fresh_try = true;
     loop {
         let before = bytes.len();
-        let out = fetch_from(url, &mut bytes, &|n| progress((n as f32 / total).min(1.0)));
+        let mut out = fetch_from(url, &mut bytes, &|n| progress((n as f32 / total).min(1.0)));
+        // the server ended the transfer early but cleanly: as cut off
+        if out.is_ok() && size > 0 && (bytes.len() as u64) < size {
+            out = Err(format!("ended at {} of {size} bytes", bytes.len()));
+        }
+        if out.is_ok() && size > 0 && bytes.len() as u64 == size && sha256_hex(&bytes) != sha256 && std::mem::replace(&mut fresh_try, false) {
+            note("the download doesn't match GitHub's SHA-256: downloading it again from the start");
+            bytes.clear();
+            continue;
+        }
         match out {
             Ok(()) => break,
             Err(e) => {
