@@ -100,10 +100,21 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
             match cmd {
                 ToWorker::Quit => return,
                 ToWorker::Snap => manual = true,
+                // the board last read advised again, only while the game's Vorax screen is still open (not in
+                // upstream: after it closed, the old board's marks would come back over the game)
                 ToWorker::Shelley(level) => {
                     pipe.shelley = level;
-                    if let Some((plan, w, h)) = pipe.readvise() {
-                        send(ToUi::Show(plan, w, h));
+                    if !settler.over {
+                        if let Some((plan, w, h)) = pipe.readvise() {
+                            send(ToUi::Show(plan, w, h));
+                        }
+                    }
+                }
+                ToWorker::Mode => {
+                    if !settler.over {
+                        if let Some((plan, w, h)) = pipe.readvise() {
+                            send(ToUi::Show(plan, w, h));
+                        }
                     }
                 }
                 // the toolbox: a log chosen by hand (None: found by itself again)

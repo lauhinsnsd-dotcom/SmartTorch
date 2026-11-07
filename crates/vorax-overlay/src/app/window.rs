@@ -81,6 +81,8 @@ pub enum ToWorker {
     Snap,
     /// the Intern Shelley level changed: advise the board again
     Shelley(i32),
+    /// the advice's mode changed: advise the board again (not in upstream)
+    Mode,
     /// the toolbox: follow this log (chosen by hand), or find it again (None)
     LogPath(Option<PathBuf>),
     /// the toolbox's Stop (true) and Start (false)
@@ -473,15 +475,16 @@ fn next_script(s: &mut State) {
 }
 
 
-/// Upstream's mode and the aggressive one in turn (not in upstream), kept in the settings; the board read again so
-/// the advice shown is the new mode's.
+/// Upstream's mode and the aggressive one in turn (not in upstream), kept in the settings; the board last read is
+/// advised again so the advice shown is the new mode's (the screen isn't read: outside Vorax it would be taken for
+/// a board).
 fn next_mode(s: &mut State) {
     let on = !vorax::bot::mean_goal();
     vorax::bot::MEAN_GOAL.store(on, std::sync::atomic::Ordering::Relaxed);
     s.settings.aggressive = on;
     s.settings.save();
     note(if on { "mode: aggressive (衝分), futures judged by their plain final score" } else { "mode: upstream's (保守), futures counted up to 840k" });
-    let _ = s.tx.send(ToWorker::Snap);
+    let _ = s.tx.send(ToWorker::Mode);
 }
 
 /// Shows or hides what was read (not in upstream).
