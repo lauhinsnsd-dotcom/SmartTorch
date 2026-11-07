@@ -389,6 +389,26 @@ pub fn norm(s: &str) -> String {
 
 static DATA: OnceLock<Data> = OnceLock::new();
 
+/// Not in upstream: the rarity a new monster rolls in the live game (normal, magic, rare, boss weights), as two
+/// players' runs showed it (2026-11-07: 63 runs, 275 monsters new in an empty tank: boss about 3% against the
+/// odds' 16%, magic 47% against 37%; these weights give about boss 4%, magic 43%, normal 40%, rare 13% in
+/// Solver-played games). Upstream's odds stay in game.json, which the tests replay; the program and `vorax --live`
+/// use these.
+pub const LIVE_SPAWN_RARITY: [f64; 4] = [50.0, 45.0, 12.0, 3.2];
+
+/// Whether new monsters roll LIVE_SPAWN_RARITY (the program, `vorax --live`) or upstream's odds (the tests).
+pub static LIVE_ODDS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The spawn weights in use: the live game's, or upstream's.
+#[inline]
+pub fn spawn_weights(d: &Data) -> [f64; 4] {
+    if LIVE_ODDS.load(std::sync::atomic::Ordering::Relaxed) {
+        LIVE_SPAWN_RARITY
+    } else {
+        d.spawn_rarity
+    }
+}
+
 /// The game data this build was compiled with.
 pub fn data() -> &'static Data {
     DATA.get_or_init(|| Data::embedded().unwrap_or_else(|e| panic!("{e}")))
@@ -397,6 +417,18 @@ pub fn data() -> &'static Data {
 /// For training: the built-in game data with another board value (a model's JSON, or None for none, when boards
 /// are judged by their score). Only before the first `data()` call.
 pub fn use_model(board_value: Option<&str>) -> Result<(), String> {
-    let d = Data::parse(EMBEDDED_GAME, Some(board_value.unwrap_or("null")))?;
+    use_models(Some(board_value), None)
+}
+
+/// For training and gating: other board values, upstream's mode's and/or the aggressive mode's (Some(None): none;
+/// None: the built-in one). Only before the first `data()` call.
+pub fn use_models(board_value: Option<Option<&str>>, mean: Option<&str>) -> Result<(), String> {
+    let mut d = Data::parse(EMBEDDED_GAME, match board_value {
+        Some(v) => Some(v.unwrap_or("null")),
+        None => Some(EMBEDDED_VALUE),
+    })?;
+    if let Some(m) = mean {
+        d.model_mean = Some(serde_json::from_str::<ValueModel>(m).map_err(|e| format!("mean model: {e}"))?);
+    }
     DATA.set(d).map_err(|_| "game data already loaded".to_string())
 }

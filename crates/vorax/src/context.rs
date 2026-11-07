@@ -27,10 +27,12 @@ pub fn create_monster(a: Archetype, r: Rarity, act_bonus: i64, qty_bonus: i64) -
 }
 
 pub fn roll_rarity(d: &Data, rng: &mut Rng) -> Rarity {
-    let roll = rng.next() * d.roll_weights_total();
+    // not in upstream: the live game's weights when asked for (crate::data::LIVE_ODDS)
+    let w = crate::data::spawn_weights(d);
+    let roll = rng.next() * w.iter().sum::<f64>();
     let mut acc = 0.0;
     for r in RARITIES {
-        acc += d.spawn_weight(r);
+        acc += w[r.index()];
         if roll < acc {
             return r;
         }

@@ -33,9 +33,16 @@ fn main() {
     if let Some(n) = arg::<usize>(&args, "--threads") {
         rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
     }
-    if let Some(m) = arg::<String>(&args, "--model") {
-        let json = (m != "none").then(|| std::fs::read_to_string(&m).unwrap_or_else(|e| fail(&format!("{m}: {e}"))));
-        vorax::data::use_model(json.as_deref()).unwrap_or_else(|e| fail(&e));
+    // not in upstream: --live, new monsters as the live game rolls them (vorax::data::LIVE_SPAWN_RARITY)
+    if args.iter().any(|a| a == "--live") {
+        vorax::data::LIVE_ODDS.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    let load = |m: &str| std::fs::read_to_string(m).unwrap_or_else(|e| fail(&format!("{m}: {e}")));
+    let model = arg::<String>(&args, "--model").map(|m| (m != "none").then(|| load(&m)));
+    // not in upstream: --model-mean, the aggressive mode's board value from a file
+    let mean = arg::<String>(&args, "--model-mean").map(|m| load(&m));
+    if model.is_some() || mean.is_some() {
+        vorax::data::use_models(model.as_ref().map(|m| m.as_deref()), mean.as_deref()).unwrap_or_else(|e| fail(&e));
     }
     match cmd {
         "advise" => advise(&args[1..]),

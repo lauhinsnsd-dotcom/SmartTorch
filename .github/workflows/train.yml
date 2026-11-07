@@ -1,0 +1,60 @@
+# Not in upstream: trains the board values with the live game's odds (vorax --live: far fewer bosses than the odds
+# of 2026-10-22) and gates each against the one in use on the same seeds. Started by hand (Actions → train → Run
+# workflow, once this file is on main) or by pushing to the branch train-run. Each mode's new model, the scores and the gate's verdict go to a branch of their own
+# (train-safe, train-mean); nothing replaces data/ until the verdict says so and a person decides.
+name: train
+
+on:
+  push:
+    branches: [train-run]
+  workflow_dispatch:
+    inputs:
+      games:
+        description: "games to learn from"
+        default: "2000000"
+      gate_games:
+        description: "games each model plays in the gate"
+        default: "1500"
+
+permissions:
+  contents: write
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [safe, mean]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust
+        run: rustup default stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release -p vorax-cli
+      - name: Train
+        run: |
+          set -o pipefail
+          M=""; [ "${{ matrix.mode }}" = mean ] && M="--mean"
+          ./target/release/vorax train --live $M --games ${{ inputs.games || '2000000' }} --out new.json 2>&1 | tee train.txt
+      - name: Gate
+        run: |
+          set -o pipefail
+          if [ "${{ matrix.mode }}" = mean ]; then M="--mean"; NEW="--model-mean new.json"; else M=""; NEW="--model new.json"; fi
+          ./target/release/vorax sim --live $M --policy solver --futures 64 --games ${{ inputs.gate_games || '1500' }} --scores old.txt 2>&1 | tail -1 | tee sim-old.txt
+          ./target/release/vorax sim --live $M $NEW --policy solver --futures 64 --games ${{ inputs.gate_games || '1500' }} --scores new-scores.txt 2>&1 | tail -1 | tee sim-new.txt
+          ./target/release/vorax gate old.txt new-scores.txt 2>&1 | tee gate.txt || true
+      - name: Publish to a branch
+        run: |
+          B=train-${{ matrix.mode }}
+          mkdir -p /tmp/out && cp new.json train.txt sim-old.txt sim-new.txt gate.txt old.txt new-scores.txt /tmp/out/
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan "$B"
+          git rm -rq --cached . && git clean -fdq -e target
+          cp /tmp/out/* .
+          git add new.json train.txt sim-old.txt sim-new.txt gate.txt old.txt new-scores.txt
+          git commit -qm "train ${{ matrix.mode }}: ${{ inputs.games || '2000000' }} games, gate ${{ inputs.gate_games || '1500' }} (run ${{ github.run_id }})"
+          git push -f origin "$B"

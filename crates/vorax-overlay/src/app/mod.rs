@@ -237,6 +237,9 @@ pub fn run(args: &[String]) {
     });
     // not in upstream: the reading and the advice's futures below the game's priority, with a core or two left to
     // it (they took every core at normal priority: on a weaker PC the game hitched at each move)
+    // not in upstream: new monsters in the advice's futures as the live game rolls them (far fewer bosses than the
+    // odds of 2026-10-22: vorax::data::LIVE_SPAWN_RARITY)
+    vorax::data::LIVE_ODDS.store(true, std::sync::atomic::Ordering::Relaxed);
     let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
     let threads = if cores >= 8 { cores - 2 } else { (cores - 1).max(1) };
     match rayon::ThreadPoolBuilder::new().num_threads(threads).start_handler(|_| sys::below_normal()).build_global() {
