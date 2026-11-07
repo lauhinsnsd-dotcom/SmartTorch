@@ -17,6 +17,15 @@ fn key(text: &str) -> String {
     text.chars().filter(|c| !c.is_whitespace() && *c != '/').collect()
 }
 
+/// A card's name as the data has it now: picks learned before v2.0.0 may carry upstream's old names.
+fn renamed(name: &str) -> &str {
+    match name {
+        "Fast-Acting Heart Tonic" => "Fast-Acting Cardiac Stimulant",
+        "Purest Holy Water" => "The Holiest Water",
+        n => n,
+    }
+}
+
 impl Learned {
     pub fn load(path: &Path) -> Learned {
         let map = std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
@@ -42,7 +51,7 @@ impl Learned {
         if k.is_empty() {
             return None;
         }
-        self.map.get(phase)?.get(&k).cloned()
+        self.map.get(phase)?.get(&k).map(|n| renamed(n).to_string())
     }
 
     /// Remembers a pick (a title with no text is nothing to know it by again).
@@ -82,7 +91,10 @@ mod tests {
         let again = Learned::load(&path);
         assert_eq!(again.get("potion", "麻、異魔").as_deref(), Some("Anesthetic Tincture - Aemberon"));
         assert_eq!(again.get("instrument", "麻、異魔"), None);
+        // a pick learned under upstream's old name comes back under the new one
         let mut again = again;
+        again.put("potion", "純聖", "Purest Holy Water");
+        assert_eq!(again.get("potion", "純聖").as_deref(), Some("The Holiest Water"));
         again.clear();
         assert!(!path.exists());
         let _ = std::fs::remove_dir_all(&dir);

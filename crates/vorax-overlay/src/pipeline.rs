@@ -89,6 +89,14 @@ fn resumes(before: Option<i32>, now: Option<i32>) -> bool {
     }
 }
 
+/// A potion's title read as a Dissection the data has no name for ("解剖…": four of the five, their Chinese names
+/// not seen yet), named "Dissection: " and the title as read, so it's always the advice (`is_always_take`) and the
+/// pill shows the title. Not in upstream.
+pub fn dissection(text: &str) -> Option<String> {
+    let han: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    han.contains("解剖").then(|| format!("Dissection: {han}"))
+}
+
 /// Instrument rerolls a game starts with, by Intern Shelley level (src/data/shelley.ts).
 pub fn shelley_rerolls(level: i32) -> i32 {
     [0, 1, 1, 2, 2, 2].get((level - 1).clamp(0, 5) as usize).copied().unwrap_or(0)
@@ -225,6 +233,13 @@ impl Pipeline {
         // the player's picks for this board stand, made out since or not
         for (j, n) in self.picks.clone() {
             Self::put_card(reading, j, &n);
+        }
+        if phase == "potion" {
+            for (j, text) in Self::unknown_slots(reading) {
+                if let Some(name) = dissection(&text) {
+                    Self::put_card(reading, j, &name);
+                }
+            }
         }
         let unknown = Self::unknown_slots(reading);
         if unknown.is_empty() {
@@ -469,11 +484,16 @@ mod tests {
         assert_eq!(r.state.hand, whole.state.hand);
         assert!(Pipeline::unknown_slots(&r).is_empty());
         assert_eq!(r.fields["hand1"].guess.as_deref(), Some(middle.as_str()));
-        // a card the data doesn't have isn't asked about
+        // a Dissection the data has no name for is named by its title, and always taken
         let mut r = whole.clone();
         r.state.hand.remove(2);
-        r.problems.push(Problem::UnknownArt { field: "hand2".into(), crop: vorax_scan::pixels::Rect::new(0.0, 0.0, 1.0, 1.0), hand: None, text: Some("解剖浸液：病軀".into()) });
+        r.problems.push(Problem::UnknownArt { field: "hand2".into(), crop: vorax_scan::pixels::Rect::new(0.0, 0.0, 1.0, 1.0), hand: None, text: Some("解 剖 一 ： 病 蟲".into()) });
+        let name = super::dissection("解 剖 一 ： 病 蟲").unwrap();
+        assert_eq!(name, "Dissection: 解剖一：病蟲");
+        Pipeline::put_card(&mut r, 2, &name);
         assert!(Pipeline::unknown_slots(&r).is_empty());
+        assert!(vorax::advisor::is_always_take(&r.state.hand[2]));
+        assert_eq!(super::dissection("剖腹取石療法"), None);
     }
 
     #[test]

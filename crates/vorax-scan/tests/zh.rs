@@ -85,18 +85,15 @@ fn a_title_with_characters_dropped_still_names_its_card() {
 }
 
 #[test]
-fn a_card_not_in_the_data_is_known_as_such() {
+fn the_first_dissection_is_read_and_always_taken() {
     use vorax_scan::titles::han_unsupported;
     let data = scan_data();
-    for text in ["解剖浸液：病軀", "解剖浸液:病躯", "解剖浸液病", "剖浸液：病軀"] {
-        assert_eq!(han_unsupported(data, text).as_deref(), Some("解剖浸液：病軀"), "{text}");
-    }
-    // other titles, and ones too short to tell, are not it
-    for text in ["", "浸液", "混合活蛭溶液", "脊髓灰質溶液", "細肢藥粉-", "黏稠膽汁溶液", "液"] {
+    // once a card the data didn't have; named since (after DinoRaos/vorax-solver-rs v0.3.0), so always taken
+    for text in ["解剖浸液：病軀", "解剖浸液:病躯", "解 剖 浸 液 ： 病 軀"] {
+        assert_eq!(settled("potion", text).as_deref(), Some("Dissection Infusion: Morbid Corpse"), "{text}");
         assert_eq!(han_unsupported(data, text), None, "{text}");
     }
-    // and it matches no card of the data well enough to be settled as one
-    assert_eq!(settled("potion", "解剖浸液：病軀"), None);
+    assert!(vorax::advisor::is_always_take("Dissection Infusion: Morbid Corpse"));
 }
 
 #[test]

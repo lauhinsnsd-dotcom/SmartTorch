@@ -143,7 +143,7 @@
    "複方煥生丸劑",
    "复方焕生丸剂"
   ],
-  "Fast-Acting Heart Tonic": [
+  "Fast-Acting Cardiac Stimulant": [
    "速效強心劑",
    "速效强心剂"
   ],
@@ -155,7 +155,7 @@
    "誘蟲劑",
    "诱虫剂"
   ],
-  "Purest Holy Water": [
+  "The Holiest Water": [
    "至純聖水",
    "至纯圣水"
   ],
@@ -201,6 +201,10 @@
    "第二儀式聖水：鞭刑",
    "第三儀式聖水：啟蒙",
    "第四儀式聖水：聖餐"
+  ],
+  "Dissection Infusion: Morbid Corpse": [
+   "解剖浸液：病軀",
+   "解剖浸液：病躯"
   ]
  },
  "instrument": {
@@ -430,8 +434,5 @@
   "黏": "粘",
   "痳": "麻"
  },
- "unsupported": [
-  "解剖浸液：病軀",
-  "解剖浸液：病躯"
- ]
+ "unsupported": []
 }

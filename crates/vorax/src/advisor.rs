@@ -131,10 +131,12 @@ pub fn is_xenopanacea(name: &str) -> bool {
 }
 
 /// A Supreme potion the simulator can't play out, always the advice when offered: a Xenopanacea (its card prints
-/// only flavour text) or a Holy Water rite ("… Holy Water: …", whose effect is another card later; Purest Holy
-/// Water, with no colon, is simulated).
+/// only flavour text), a Holy Water rite ("… Holy Water: …", whose effect is another card later; The Holiest
+/// Water, with no colon, is simulated) or a Dissection (flavour text too, one after another for five rounds; after
+/// DinoRaos/vorax-solver-rs v0.3.0: a game that took them all, Nov 4, 2026, ended past 18M).
 pub fn is_always_take(name: &str) -> bool {
-    is_xenopanacea(name) || name.to_lowercase().contains("holy water:")
+    let name = name.trim().to_lowercase();
+    is_xenopanacea(&name) || name.contains("holy water:") || name.starts_with("dissection")
 }
 
 fn lookup(phase_potion: bool, name: &str) -> Option<u8> {
@@ -221,7 +223,7 @@ pub fn prepare(x: &ScreenState, futures: Option<u32>) -> Prepared {
     if x.phase == ScreenPhase::Protocol {
         return Prepared::Done(Advice { best: Best::Nothing, ranking: vec![], board: 0, refresh_end: None, plan: false, final_: true, ms: 0, unknown, note: None });
     }
-    // a ULT the simulator can't play out (a Xenopanacea, a Holy Water rite) is always taken: it's worth more than
+    // a ULT the simulator can't play out (a Xenopanacea, a Holy Water rite, a Dissection) is always taken: it's worth more than
     // anything beside it
     if x.phase == ScreenPhase::Potion {
         if let Some(xeno) = x.hand.iter().position(|n| is_always_take(n)) {

@@ -46,10 +46,10 @@ pub fn potion_port(id: u8) -> Option<(&'static str, Targeting)> {
         31 => ("Xeno-Hormone", Select1To2),
         32 => ("Targeted Xeno-Hormone", Select1),
         35 => ("Compound Revitalizing Pill", Auto),
-        36 => ("Fast-Acting Heart Tonic", Auto),
+        36 => ("Fast-Acting Cardiac Stimulant", Auto),
         37 => ("Plague Quarter Peat Poultice", Auto),
         38 => ("Insect Attractant", Auto),
-        39 => ("Purest Holy Water", Auto),
+        39 => ("The Holiest Water", Auto),
         41 => ("Rousing Salts", Auto),
         _ => return None,
     })
@@ -411,7 +411,7 @@ pub fn apply_potion(c: &mut Ctx, id: u8, targets: &[u8]) {
                 }
             }
         }
-        // Fast-Acting Heart Tonic
+        // Fast-Acting Cardiac Stimulant (upstream: Fast-Acting Heart Tonic; the name in the game, as DinoRaos found)
         36 => {
             let t = c.lowest();
             if t >= 0 {
@@ -446,7 +446,7 @@ pub fn apply_potion(c: &mut Ctx, id: u8, targets: &[u8]) {
                 c.boost(p as i32, 10 * overflow, 15 * overflow);
             }
         }
-        // Purest Holy Water
+        // The Holiest Water (upstream: Purest Holy Water)
         39 => {
             for &t in &c.by_archetype(Agito) {
                 let t = t as usize;

@@ -18,8 +18,8 @@ pairs = {'potion': {}, 'instrument': {}, 'protocol': {}}
 for e, z in zip(en['potion'][:33], zh[:33]):
     pairs['potion'][e] = [z]
 kits = {'Potion Kit (Large)': '药剂箱（大）', 'Rare Potion Kit (Small)': '稀有药剂箱', 'Potion Kit (Small)': '药剂箱（小）',
-        'Compound Revitalizing Pill': '复方焕生丸剂', 'Fast-Acting Heart Tonic': '速效强心剂',
-        'Plague Quarter Peat Poultice': '疫区泥炭敷料', 'Insect Attractant': '诱虫剂', 'Purest Holy Water': '至纯圣水'}
+        'Compound Revitalizing Pill': '复方焕生丸剂', 'Fast-Acting Cardiac Stimulant': '速效强心剂',
+        'Plague Quarter Peat Poultice': '疫区泥炭敷料', 'Insect Attractant': '诱虫剂', 'The Holiest Water': '至纯圣水'}
 for e, z in kits.items():
     assert e in en['potion'], e
     pairs['potion'][e] = [z]
@@ -52,9 +52,9 @@ seen = {
                'Petrified Spinal Solution': '石化脊髓溶液', 'Osteolytic Ointment': '化骨油膏',
                'Potent Xenopurge Powder': '強效祛異藥粉', 'Viscous Bile Solution': '黏稠膽汁溶液',
                'Compound Leech Solution': '混合活蛭溶液', 'Pure Leech Solution': '純粹活蛭溶液',
-               'Fast-Acting Heart Tonic': '速效強心劑', 'Compound Revitalizing Pill': '複方煥生丸劑',
+               'Fast-Acting Cardiac Stimulant': '速效強心劑', 'Compound Revitalizing Pill': '複方煥生丸劑',
                'Plague Quarter Peat Poultice': '疫區泥炭敷料', 'Rousing Salts': '驚醒嗅鹽',
-               'Insect Attractant': '誘蟲劑', 'Purest Holy Water': '至純聖水',
+               'Insect Attractant': '誘蟲劑', 'The Holiest Water': '至純聖水',
                'Xenopanacea: Osteotrophy': '異種萬靈藥：壯骨', 'Xenopanacea: Brood': '異種萬靈藥：育雛',
                'Xenopanacea': '異種萬靈藥',
                'First Rite Holy Water: Confession': '第一儀式聖水：告解',

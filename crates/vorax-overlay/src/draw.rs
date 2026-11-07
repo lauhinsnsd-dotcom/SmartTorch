@@ -83,6 +83,8 @@ fn slots(reading: &Reading, size: usize) -> Vec<usize> {
 /// (dev/make_font_zh.py), so a word added here needs the font made again (a test says so).
 const ZH_REROLL: &str = "刷新";
 const ZH_ALWAYS: &str = "出現就選";
+/// a Dissection the data has no Chinese name for
+const ZH_DISSECTION: &str = "解剖卡";
 const ZH_REACH: &str = "達";
 const ZH_TANK: &str = "第 {} 格";
 const ZH_CARD: &str = "第 {} 張卡";
@@ -218,7 +220,10 @@ pub(crate) fn zh_name(phase: ScreenPhase, name: &str) -> String {
         ScreenPhase::Instrument => &z.instrument,
         ScreenPhase::Protocol => &z.protocol,
     };
-    names.get(name).and_then(|f| f.first()).cloned().unwrap_or_else(|| name.to_string())
+    names.get(name).and_then(|f| f.first()).cloned().unwrap_or_else(|| {
+        // a Dissection named by its title as read (`pipeline::dissection`): its characters may not be in the fonts
+        if name.starts_with("Dissection: ") { ZH_DISSECTION.to_string() } else { name.to_string() }
+    })
 }
 
 /// The marks for this advice on this board. `l`: the layout of the screen the overlay covers. `zh`: the hint in
@@ -697,18 +702,20 @@ mod zh_tests {
     }
 
     #[test]
-    fn a_card_not_in_the_data_is_said_so_and_not_read_again() {
+    fn cards_not_read_are_listed_to_read_again() {
         let data = vorax_scan::scan_data();
         let mut r = vorax_scan::scan(&vorax_scan::pixels::Img::new(64, 64), data, false);
         let art = |j: usize, text: Option<&str>| Problem::UnknownArt { field: format!("hand{j}"), crop: Rect::new(0.0, 0.0, 1.0, 1.0), hand: None, text: text.map(String::from) };
-        r.problems = vec![art(2, Some("解剖浸液：病軀"))];
+        r.problems = vec![art(0, Some("細肢藥粉-")), art(1, None), Problem::Unreadable { field: "tank4.total".into() }];
         let m = not_read(&r);
-        assert_eq!(m.unsupported, vec![(2, "解剖浸液：病軀".to_string())]);
-        assert!(m.is_empty(), "nothing to read again");
-        r.problems = vec![art(0, Some("細肢藥粉-")), art(2, Some("解剖浸液病軀")), art(1, None), Problem::Unreadable { field: "tank4.total".into() }];
-        let m = not_read(&r);
-        assert_eq!((m.cards.clone(), m.tanks.clone(), m.unsupported.len()), (vec![0, 1], vec![4], 1));
+        assert_eq!((m.cards.clone(), m.tanks.clone(), m.unsupported.len()), (vec![0, 1], vec![4], 0));
         assert!(!m.is_empty());
+    }
+
+    #[test]
+    fn a_dissection_without_a_chinese_name_is_shown_as_one() {
+        assert_eq!(zh_name(ScreenPhase::Potion, "Dissection: 解剖一：病蟲"), ZH_DISSECTION);
+        assert_eq!(zh_name(ScreenPhase::Potion, "Dissection Infusion: Morbid Corpse"), "解剖浸液：病軀");
     }
 
     #[test]

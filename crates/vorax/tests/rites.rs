@@ -26,9 +26,11 @@ fn a_rite_is_always_the_advice() {
 }
 
 #[test]
-fn purest_holy_water_is_simulated() {
+fn the_holiest_water_is_simulated() {
     linear_board_value();
-    assert!(!advisor::is_always_take("Purest Holy Water"));
+    assert!(!advisor::is_always_take("The Holiest Water"));
+    assert!(advisor::is_always_take("Dissection Infusion: Morbid Corpse"));
+    assert!(advisor::is_always_take("Dissection II: Daemonectomy"));
     assert!(advisor::is_always_take("Ritual Holy Water: Flagellation"));
     assert!(advisor::is_always_take("Xenopanacea: Brood"));
 }
