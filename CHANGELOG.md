@@ -3,6 +3,11 @@
 每個版本更新了什麼。有新版本時，SmartTorch 的更新提示也會顯示該版本的內容。
 What each version changed. When a new version is out, SmartTorch's update note shows its part.
 
+## v1.0.7
+
+**渴癮症助手 · Vorax helper**
+- 修正：在城鎮等渴癮以外的畫面切換「衝分／原作者」模式時，會把畫面誤讀成培養槽（出現「?」「空」和「畫面未完全讀到」），讀取時也會令電腦忙碌很久。現在切換模式或雪莉等級只會用上一次讀到的渴癮局面重新計算，不會讀取畫面；不在渴癮畫面時不做任何事。 Fixed: switching between Push score and Upstream's outside Vorax (in town, say) read the screen as tanks (? and 空, "Board not fully read") and kept the PC busy for a long while. Changing the mode or Intern Shelley's level now works the last Vorax board out again without reading the screen, and does nothing outside Vorax.
+
 ## v1.0.6
 
 **1920×1080 · 1920×1080**
