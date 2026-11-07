@@ -145,3 +145,25 @@ fn characters_only_one_card_has_name_it_short_of_half() {
     assert_eq!(han_pick(data, "protocol", "青 膽 汁 溶 液").as_deref(), None);
     assert_eq!(han_pick(data, "protocol", "顱 骨").as_deref(), None);
 }
+
+/// The cards a Xenopanacea: Brood leaves for later rounds (子一代 to 子三代, Supreme, not in upstream's data: always
+/// taken), as a 2560x1440 client's titles were read (a player's log, 2026-11-07).
+#[test]
+fn the_brood_cards_are_told_apart() {
+    let data = scan_data();
+    for (text, card) in [
+        ("子 一 代 • 爬 蟲 卵 簇", "Xenopanacea Brood: F1 Reptile Egg Cluster"),
+        ("子 二 代 . 生 蟲 蛹", "Xenopanacea Brood: F2 Parasite Pupae"),
+        ("子 二 代 : 爬 蟲 蛹 簇", "Xenopanacea Brood: F2 Reptile Pupa Cluster"),
+        ("三 蟲 蛹 簇", "Xenopanacea Brood: F2 Reptile Pupa Cluster"),
+        ("子 三 代 寄 生 蝶", "Xenopanacea Brood: F3 Parasitic Butterfly"),
+        ("丨 子 三 弋 手 生 蝶", "Xenopanacea Brood: F3 Parasitic Butterfly"),
+        ("子 三 代 • 破 繭", "Xenopanacea Brood: F3 Cocoon Swarm"),
+        ("三 代 破 繭 蝶", "Xenopanacea Brood: F3 Cocoon Swarm"),
+    ] {
+        assert_eq!(han_pick(data, "potion", text).as_deref(), Some(card), "{text}");
+        assert!(vorax::advisor::is_always_take(card), "{card}");
+    }
+    // too little to tell the two of a generation apart: not guessed
+    assert_eq!(han_pick(data, "potion", "子 一 代 :"), None);
+}

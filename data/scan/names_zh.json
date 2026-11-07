@@ -168,6 +168,29 @@
   "Xenopanacea: Brood": [
    "異種萬靈藥：育雛"
   ],
+  "Xenopanacea Brood: F1 Parasite Eggs": [
+   "子一代：寄生蟲卵",
+   "子一代：寄生虫卵"
+  ],
+  "Xenopanacea Brood: F1 Reptile Egg Cluster": [
+   "子一代：爬蟲卵簇",
+   "子一代：爬虫卵簇"
+  ],
+  "Xenopanacea Brood: F2 Parasite Pupae": [
+   "子二代：寄生蟲蛹",
+   "子二代：寄生虫蛹"
+  ],
+  "Xenopanacea Brood: F2 Reptile Pupa Cluster": [
+   "子二代：爬蟲蛹簇",
+   "子二代：爬虫蛹簇"
+  ],
+  "Xenopanacea Brood: F3 Parasitic Butterfly": [
+   "子三代：寄生蝶"
+  ],
+  "Xenopanacea Brood: F3 Cocoon Swarm": [
+   "子三代：破繭蝶群",
+   "子三代：破茧蝶群"
+  ],
   "Xenopanacea": [
    "異種萬靈藥"
   ],
