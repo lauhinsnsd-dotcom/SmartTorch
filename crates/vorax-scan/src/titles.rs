@@ -148,6 +148,15 @@ pub fn han_pick(data: &ScanData, phase: &str, text: &str) -> Option<String> {
             return Some(longer.clone());
         }
     }
+    // not in upstream: three or more characters, in order, from a third of a name on, that no other card of any kind
+    // has as many of: a family's version told by its own character short of half the name (1920x1080: "孿 生 - 骨" for
+    // 孿生激素-骨衛兵, 3/7; its Pest version has 2)
+    if let [(most_name, m, r)] = longest.as_slice() {
+        let others_fewer = PHASES.iter().all(|p| zh_names_for(data, p).iter().filter(|(en, _)| *en != most_name).all(|(_, zh)| zh.iter().all(|z| lcs(&han(z, fold), &t) < *m)));
+        if *m >= 3 && *r >= 1.0 / 3.0 - 1e-9 && others_fewer {
+            return Some(most_name.clone());
+        }
+    }
     // (a hair under a fifth: 3/5 - 2/5 is 0.19999999999999996 in floating point, and "腦溶液" was left unread)
     // not in upstream: two or more characters, in order, that no other card of this kind has any of and no card of any
     // kind has all of, name the card even short of half of it ("疫 像" for 疫區聖母像, its statue over the middle of
@@ -363,6 +372,30 @@ fn ranked_in(data: &ScanData, phase: &str, text: &str, script: Script) -> Vec<(S
     r
 }
 
+/// not in upstream: how far ahead of the next of the names a title fits alike a picture's best of them must be
+/// (藥劑箱（大）'s own picture 0.998 against 藥劑箱（小）'s 0.979 at 1920x1080; a family whose versions share their
+/// art, 細肢藥粉, 0.996 against 0.994)
+const PICTURE_TIE_GAP: f64 = 0.01;
+
+/// not in upstream: of the names a title fits about as well as its best (a family's versions), the one the
+/// card's picture clearly prefers.
+fn picture_between(r: &[(String, f64)], pic: Option<&PictureRead>) -> Option<String> {
+    let top = r.first()?.1;
+    if top < MIN_Q {
+        return None;
+    }
+    let close: Vec<&String> = r.iter().filter(|(_, q)| *q >= top - GAP).map(|(n, _)| n).collect();
+    if close.len() < 2 {
+        return None;
+    }
+    let mut by_picture: Vec<&(String, f64)> = pic?.ranks.iter().filter(|(n, _)| close.contains(&n)).collect();
+    by_picture.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    match by_picture.as_slice() {
+        [a, b, ..] if a.1 - b.1 >= PICTURE_TIE_GAP => Some(a.0.clone()),
+        _ => None,
+    }
+}
+
 fn settled(r: &[(String, f64)]) -> bool {
     r[0].1 >= MIN_Q && r[0].1 - r.get(1).map_or(f64::NEG_INFINITY, |x| x.1) >= GAP
 }
@@ -518,6 +551,11 @@ pub fn read_titles_in(img: &Img, reading: Reading, data: &ScanData, read_text: &
             fields.insert(key, FieldRead { sure: true, guess: name.clone(), score: Some(top.1), second: second.map(|s| s.1) });
         } else if let Some(n) = han_client.then(|| han_pick(data, phase, &texts[j])).flatten().filter(|n| !pic.is_some_and(|p| p.field.as_ref().is_some_and(|f| f.sure) && p.ranks.first().is_some_and(|x| x.0 != *n))) {
             // a Chinese title with a character or two not read, clearly one card's (and no sure picture against it)
+            fields.insert(key, FieldRead { sure: false, guess: Some(n.clone()), score: Some(top.1), second: second.map(|s| s.1) });
+            name = Some(n);
+        } else if let Some(n) = han_client.then(|| picture_between(r, pic)).flatten() {
+            // not in upstream: a Chinese title that fits a family's versions alike (藥劑箱 for 藥劑箱（大） and
+            // 藥劑箱（小）, the size in brackets not read), told apart by the picture when it clearly prefers one
             fields.insert(key, FieldRead { sure: false, guess: Some(n.clone()), score: Some(top.1), second: second.map(|s| s.1) });
             name = Some(n);
         } else if han_client && top.1 >= MIN_Q && !pic.is_some_and(|p| p.field.as_ref().is_some_and(|f| f.sure) && p.ranks.first().is_some_and(|x| r.iter().any(|(n, q)| *n == x.0 && *q >= top.1 - GAP))) {

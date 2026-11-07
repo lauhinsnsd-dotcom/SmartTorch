@@ -71,7 +71,9 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
     pipe.learned = crate::learn::Learned::load(&super::sys::data_dir().join("learned.json"));
     send(ToUi::Learned(pipe.learned.count()));
     let mut picker = opts.picker;
+    // the board the picker's card is up for (pipeline's ask_key; empty: none up), and the places it asks about
     let mut asked = String::new();
+    let mut asked_slots: Vec<usize> = Vec::new();
     let mut follower: Option<Follower> = None;
     let mut looked_for_log = Instant::now() - Duration::from_secs(60);
     let mut settler = Settler::default();
@@ -240,7 +242,13 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
             if kept.is_some() {
                 last_kept = kept;
             }
-            if missed && rereads < REREADS && !settler.over {
+            // not in upstream: the picker's card is up for this board still: nothing more is read by itself (the
+            // player picks, or plays the round, which the log tells; Ctrl+Alt+X still reads)
+            let asking = !asked.is_empty() && pipe.ask_key == asked;
+            if asking {
+                relook_at = None;
+            }
+            if missed && rereads < REREADS && !settler.over && !asking {
                 rereads += 1;
                 reread_at = Some(Instant::now() + REREAD);
             } else if missed && only_reread {
@@ -249,17 +257,25 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
             // not in upstream: a card still not made out after the rereads is asked of the player (once a board;
             // Ctrl+Alt+X asks again); the card closes when the board changes
             if !animating {
-                if manual {
-                    asked.clear();
-                }
                 let want = picker && missed && !pipe.asks.is_empty();
+                let slots: Vec<usize> = pipe.asks.iter().map(|a| a.slot).collect();
                 if !asked.is_empty() && (!want || pipe.ask_key != asked) {
+                    note(if pipe.ask_key != asked { "the board changed: the picker's card closes" } else { "every card is made out now: the picker's card closes" });
                     asked.clear();
+                    asked_slots.clear();
                     send(ToUi::AskClose);
+                } else if asking && want && slots != asked_slots {
+                    // the same board, read again by Ctrl+Alt+X: the cards made out since are no longer asked about
+                    if let Some((w, h)) = pipe.last_size() {
+                        note(&format!("still asking the player: card {}", slots.iter().map(|j| (j + 1).to_string()).collect::<Vec<_>>().join(", ")));
+                        asked_slots = slots.clone();
+                        send(ToUi::Ask(pipe.asks.clone(), w, h));
+                    }
                 }
                 if want && reread_at.is_none() && pipe.ask_key != asked {
                     if let Some((w, h)) = pipe.last_size() {
                         asked = pipe.ask_key.clone();
+                        asked_slots = slots;
                         note(&format!("asking the player: {}", pipe.asks.iter().map(|a| format!("card {} [{}] → {:?}", a.slot + 1, a.text.replace('\n', " / "), a.candidates)).collect::<Vec<_>>().join("; ")));
                         send(ToUi::Ask(pipe.asks.clone(), w, h));
                     }

@@ -27,14 +27,23 @@ pub fn scan_upstream(captured: &Img, data: &ScanData, pictures: bool) -> Reading
 fn scan_scales(captured: &Img, data: &ScanData, pictures: bool, upstream: bool) -> Reading {
     let last = LAST_UI.get();
     let first = scan_with(captured, data, pictures, Some(0.0), true, last, upstream);
-    // a picture that isn't the board, or a card mid-flight, isn't read better at another scale
-    if first.fields.get("round").is_some_and(|f| f.sure) || first.has(|p| matches!(p, Problem::Animating | Problem::NotFound)) {
+    let round_sure = |r: &Reading| r.fields.get("round").is_some_and(|f| f.sure);
+    if round_sure(&first) {
+        LAST_UI_SURE.set(true);
+    }
+    // a picture that isn't the board, or a card mid-flight, isn't read better at another scale. Not in upstream: a
+    // card "mid-flight" at a scale no board has been read at yet may be the hand at another one (1920x1080 at the
+    // game's recommended interface scale, about 125%, with the reader just started at 100%: the 100% places see
+    // one or two cards), so there another scale whose round reads for sure and whose cards aren't mid-flight stands
+    let animating = first.has(|p| matches!(p, Problem::Animating));
+    if round_sure(&first) || first.has(|p| matches!(p, Problem::NotFound)) || (animating && (upstream || LAST_UI_SURE.get())) {
         return first;
     }
     for ui in UI_SCALES.into_iter().filter(|&u| u != last) {
         let r = scan_with(captured, data, pictures, Some(0.0), true, ui, upstream);
-        if r.fields.get("round").is_some_and(|f| f.sure) {
+        if round_sure(&r) && !(animating && r.has(|p| matches!(p, Problem::Animating))) {
             LAST_UI.set(ui);
+            LAST_UI_SURE.set(true);
             return r;
         }
     }
@@ -45,6 +54,8 @@ thread_local! {
     /// the interface scale the last reading was made at (upstream keeps one for its reader; the overlay reads on
     /// one thread)
     static LAST_UI: Cell<f64> = const { Cell::new(1.0) };
+    /// not in upstream: whether a board's round has been read for sure at LAST_UI (a card mid-flight there is one)
+    static LAST_UI_SURE: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Where a hand's header may sit below or above the layout's place (reference pixels), nearest first.

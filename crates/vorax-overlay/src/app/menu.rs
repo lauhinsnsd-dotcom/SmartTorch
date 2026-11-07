@@ -48,8 +48,6 @@ struct Menu {
     s: f32,
     /// the row and, on the levels row, the level under the mouse
     hover: Option<(usize, Option<i32>)>,
-    /// the picker's card (a card not read), which closes by itself when the board changes
-    picker: bool,
 }
 
 /// Where a card opens: by the cursor, in the tray's corner, or at a place (the picker: by the card not read).
@@ -61,6 +59,9 @@ enum Place {
 
 thread_local! {
     static MENU: RefCell<Option<Menu>> = const { RefCell::new(None) };
+    /// not in upstream: the picker's card in a place of its own, so the other cards (Ctrl+Alt+B's note and its
+    /// timer, the tray menu) neither replace nor close it
+    static PICKER: RefCell<Option<Menu>> = const { RefCell::new(None) };
 }
 
 /// WM_MOUSELEAVE (not in this version of the windows crate's WindowsAndMessaging)
@@ -401,14 +402,11 @@ pub fn open(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>) {
 /// on top without taking the focus from the game.
 pub fn picker(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, x: i32, y: i32) {
     show(owner, rows, fonts, Place::At(POINT { x, y }));
-    with(|m| m.picker = true);
 }
 
-/// Closes the picker's card, if it's the one open.
+/// Closes the picker's card.
 pub fn close_picker() {
-    if with(|m| m.picker).unwrap_or(false) {
-        close();
-    }
+    close_in(&PICKER);
 }
 
 /// Opens a card by itself, in the main screen's corner by the tray, on top but without taking the focus (the
@@ -419,7 +417,8 @@ pub fn notify(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>) {
 
 fn show(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, place: Place) {
     let by_tray = !matches!(place, Place::Cursor);
-    close();
+    let slot = if matches!(place, Place::At(_)) { &PICKER } else { &MENU };
+    close_in(slot);
     unsafe {
         let Ok(instance) = GetModuleHandleW(None) else { return };
         let class = w!("VoraxRsMenu");
@@ -438,7 +437,7 @@ fn show(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, place: Place) {
         let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
         let _ = GetMonitorInfoW(mon, &mut mi);
         let work = mi.rcWork;
-        let mut m = Menu { hwnd: HWND::default(), owner, rows, fonts, s, hover: None, picker: false };
+        let mut m = Menu { hwnd: HWND::default(), owner, rows, fonts, s, hover: None };
         let pm = render(&m);
         let (w, h) = (pm.width() as i32, pm.height() as i32);
         // the card's corner at the cursor (or the work area's), kept inside the screen's work area
@@ -459,12 +458,19 @@ fn show(owner: HWND, rows: Vec<Row>, fonts: Rc<Fonts>, place: Place) {
             let _ = ShowWindow(hwnd, SW_SHOW);
             let _ = SetForegroundWindow(hwnd);
         }
-        MENU.with(|c| *c.borrow_mut() = Some(m));
+        slot.with(|c| *c.borrow_mut() = Some(m));
     }
 }
 
+/// Closes the card open (the tray menu or a note; not the picker's card).
 pub fn close() {
-    let h = MENU.with(|c| c.borrow_mut().take().map(|m| m.hwnd));
+    close_in(&MENU);
+}
+
+type Slot = std::thread::LocalKey<RefCell<Option<Menu>>>;
+
+fn close_in(slot: &'static Slot) {
+    let h = slot.with(|c| c.borrow_mut().take().map(|m| m.hwnd));
     if let Some(h) = h {
         unsafe {
             let _ = DestroyWindow(h);
@@ -476,11 +482,20 @@ fn with<R>(f: impl FnOnce(&mut Menu) -> R) -> Option<R> {
     MENU.with(|c| c.borrow_mut().as_mut().map(f))
 }
 
+/// The card whose window this is (the picker's or the other), and its place.
+fn slot_of(hwnd: HWND) -> Option<&'static Slot> {
+    [&MENU, &PICKER].into_iter().find(|slot| slot.with(|c| c.borrow().as_ref().is_some_and(|m| m.hwnd == hwnd)))
+}
+
+fn with_win<R>(hwnd: HWND, f: impl FnOnce(&mut Menu) -> R) -> Option<R> {
+    slot_of(hwnd)?.with(|c| c.borrow_mut().as_mut().map(f))
+}
+
 unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     let (x, y) = ((lp.0 & 0xffff) as i16 as f32, ((lp.0 >> 16) & 0xffff) as i16 as f32);
     match msg {
         WM_MOUSEMOVE => {
-            with(|m| {
+            with_win(hwnd, |m| {
                 let h = hit(m, x, y);
                 if h != m.hover {
                     m.hover = h;
@@ -492,7 +507,7 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
             LRESULT(0)
         }
         WM_MOUSELEAVE => {
-            with(|m| {
+            with_win(hwnd, |m| {
                 if m.hover.take().is_some() {
                     redraw(m);
                 }
@@ -501,7 +516,7 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
         }
         WM_LBUTTONUP => {
             // what was clicked, acted on once the menu's state is let go
-            let act = with(|m| {
+            let act = with_win(hwnd, |m| {
                 let (i, level) = hit(m, x, y)?;
                 match &mut m.rows[i] {
                     Row::Switch { id, on, .. } => {
@@ -535,18 +550,26 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
             .flatten();
             if let Some((owner, id, closes)) = act {
                 if closes {
-                    close();
+                    if let Some(slot) = slot_of(hwnd) {
+                        close_in(slot);
+                    }
                 }
                 let _ = PostMessageW(owner, WM_COMMAND, WPARAM(id as usize), LPARAM(0));
             }
             LRESULT(0)
         }
+        // not in upstream: the picker's card stays until a card is picked or the board changes (window.rs), not
+        // closed by a click back in the game after one on the card
         WM_KEYDOWN if wp.0 == VK_ESCAPE.0 as usize => {
-            close();
+            if slot_of(hwnd).is_some_and(|slot| std::ptr::eq(slot, &MENU)) {
+                close();
+            }
             LRESULT(0)
         }
         WM_ACTIVATE if (wp.0 & 0xffff) as u32 == WA_INACTIVE => {
-            close();
+            if slot_of(hwnd).is_some_and(|slot| std::ptr::eq(slot, &MENU)) {
+                close();
+            }
             LRESULT(0)
         }
         _ => DefWindowProcW(hwnd, msg, wp, lp),
@@ -583,5 +606,5 @@ pub unsafe fn put(hwnd: HWND, x: i32, y: i32, w: i32, h: i32, rgba: &[u8]) {
 
 /// The menu drawn into a picture (for checking its look without opening it): `hover` lights that row.
 pub fn preview(rows: Vec<Row>, fonts: Rc<Fonts>, s: f32, hover: Option<(usize, Option<i32>)>) -> Pixmap {
-    render(&Menu { hwnd: HWND::default(), owner: HWND::default(), rows, fonts, s, hover, picker: false })
+    render(&Menu { hwnd: HWND::default(), owner: HWND::default(), rows, fonts, s, hover })
 }
