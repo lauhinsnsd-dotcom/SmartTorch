@@ -11,6 +11,8 @@
 mod draw;
 mod learn;
 mod pipeline;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod privacy;
 mod zh;
 mod zipw;
 #[cfg(windows)]

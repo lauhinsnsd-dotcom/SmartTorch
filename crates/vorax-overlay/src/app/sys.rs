@@ -236,7 +236,8 @@ pub fn log_history() -> String {
     text
 }
 
-/// A line in the debug log (%APPDATA%\VoraxRs\overlay.log), kept under 2 MB; the ones before it in OLD_LOGS.
+/// A line in the debug log (%APPDATA%\VoraxRs\overlay.log), kept under 2 MB, with the home folder left out
+/// (`privacy::private`); the ones before it in OLD_LOGS.
 pub fn note(msg: &str) {
     use std::io::Write;
     let path = data_dir().join("overlay.log");
@@ -248,7 +249,8 @@ pub fn note(msg: &str) {
         let _ = std::fs::rename(&path, dir.join(OLD_LOGS[0]));
     }
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
-    let line = format!("{secs:.3} {msg}\n");
+    // the home folder left out: logs get posted in public with reports
+    let line = format!("{secs:.3} {}\n", crate::privacy::private(msg));
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = f.write_all(line.as_bytes());
     }

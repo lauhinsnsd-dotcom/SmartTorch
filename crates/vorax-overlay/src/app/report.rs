@@ -118,6 +118,11 @@ pub fn pack(version: &str) -> Result<PathBuf, String> {
     let names: Vec<&str> = super::sys::OLD_LOGS.iter().rev().copied().chain(["overlay.log", "settings.json", "learned.json"]).collect();
     for name in names {
         if let Ok(data) = std::fs::read(dir.join(name)) {
+            // the home folder left out (logs written before v2.0.0 have it; settings.json has the Tartarus path)
+            let data = match String::from_utf8(data) {
+                Ok(text) => crate::privacy::private(&text).into_bytes(),
+                Err(e) => e.into_bytes(),
+            };
             files.push((name.to_string(), data));
         }
     }

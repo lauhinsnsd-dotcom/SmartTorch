@@ -9,6 +9,7 @@ What each version changed. When a new version is out, SmartTorch's update note s
 - 對照兩位玩家 63 局實戰紀錄後發現，原資料的怪物機率與遊戲不符：新出的怪是首領約 3%（原資料 16%），魔法怪較多。建議裡模擬的未來改用實戰機率，評估局面的公式也以新機率重新訓練（同一批 1,500 局比較：原作者模式達 840k 由 52.7% 升至 56.2%）。顯示的「達 840k」機率會比以前低，但更接近實戰。 Two players' 63 runs showed the original data's monster odds don't match the game: a new monster is a boss about 3% of the time (16% in the data), and magic more often. The advice's futures now use the live odds, and the board value judging boards was trained again with them (the same 1,500 games: upstream's mode reached 840k 56.2% of the time, up from 52.7%). The odds of 840k shown are lower than before, and closer to what you get.
 - 說明中的模擬數字已更新為實戰機率下的結果。 The simulated figures in the guide are now the live odds' ones.
 - 育雛的後代卡（子一代至子三代：寄生蟲卵、爬蟲卵簇、寄生蟲蛹、爬蟲蛹簇、寄生蝶、破繭蝶群）不在原資料中，以前讀不到；現在能認出，並標示「出現就選」。 The cards a Xenopanacea: Brood leaves (子一代 to 子三代), not in the original data, weren't read; they're now told and marked as always taken.
+- 解剖系列卡（解剖浸液：病軀 等五張）改為「出現就選」：有實戰紀錄全部拿齊後打到 1,800 萬以上（參考 DinoRaos/vorax-solver-rs v0.3.0）。 The Dissection cards (解剖浸液：病軀 and the four after it) are now always taken: a recorded game that took them all ended past 18M (after DinoRaos/vorax-solver-rs v0.3.0).
 
 **渴癮症助手 · Vorax helper**
 - 離開渴癮畫面一定會收起提示和選卡框：遊戲日誌沒記到時，SmartTorch 也會自己發現（約 10 秒內）。 Leaving the Vorax screen always takes the hints and the picker's card away: when the game's log doesn't say so, SmartTorch notices by itself (within about 10 s).
@@ -16,6 +17,7 @@ What each version changed. When a new version is out, SmartTorch's update note s
 - 減少卡頓：計算讓出 CPU 給遊戲（較低優先級，並留 1–2 個核心）。 Fewer hitches: the advice leaves the game the CPU first (below normal priority, a core or two left free).
 - Windows 截圖失敗或全黑時，自動改用另一種方式；仍擷取不到畫面時，「遊戲視窗」顯示紅點，疑難排解有處理方法。 When Windows' capture fails or comes back black, another way is used; still no picture, the Game window line shows a red dot, with what to do in Troubleshooting.
 - 對局紀錄保留多 4 倍，打幾百局統計也不會減少；回報問題會附上全部紀錄。 Four times the runs are kept, so the statistics last for hundreds of runs; reports carry them all.
+- 紀錄和回報檔不再含電腦使用者名稱（路徑中的使用者資料夾顯示為 %USERPROFILE%），公開貼出也不會洩露。 Logs and reports no longer carry the PC's user name (the home folder in paths shows as %USERPROFILE%), so they can be posted in public.
 - 移除 Ctrl+Alt+Q（關閉 SmartTorch）；請用右下角圖示右鍵 →「結束」。 Ctrl+Alt+Q (quit) is gone: right-click the tray icon → Quit.
 
 **更新 · Updates**
