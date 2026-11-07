@@ -59,16 +59,17 @@ The first time, Windows may show "Windows protected your PC" (the program isn't 
 - **原作者 · Upstream's**（預設 · default）：只追求戰前達到 840k（彩箱）的機率。Only the odds of reaching 840k before the battle count.
 - **衝分 · Push score**：彩箱機率相差 3% 以內時，選平均分數較高的選項。When the odds of 840k are within 3%, picks the higher average score.
 
-電腦模擬（同一批 2,000 局）· Simulated, the same 2,000 games:
+電腦模擬（同一批 1,500 局，用實戰的怪物機率：兩位玩家 63 局統計，新出的怪是首領約 3%，原資料是 16%）· Simulated, the same 1,500 games, with the live game's monster odds (two players' 63 runs: a new monster is a boss about 3% of the time, not the original data's 16%):
 
 | | 原作者 · Upstream's | 衝分 · Push score |
 |---|---|---|
-| 達 840k · Reached 840k | 69.8% | **74.2%** |
-| 達 1.12M · Reached 1.12M | 32.5% | 52.4% |
-| 平均分數 · Mean score | 1,036k | 1,332k |
-| 低於 50 萬 · Below 500k | 8.3% | 11.4% |
+| 達 840k · Reached 840k | 56.2% | **58.5%** |
+| 達 70 萬 · Reached 700k | **72.0%** | 66.1% |
+| 達 1.12M · Reached 1.12M | 21.3% | **33.2%** |
+| 平均分數 · Mean score | 900k | **996k** |
+| 低於 50 萬 · Below 500k | **10.9%** | 18.9% |
 
-衝分模式平均較高，代價是翻車時分數可能較低。實戰表現請看「對局紀錄」的統計。Push score does better on average, at the cost of more low runs. See your own results in Your runs.
+原作者較穩，衝分平均較高但翻車較多。模擬每步只看 64 個未來，實戰看 1,024 個，所以實戰會略高。v2.0.0 前的數字（彩箱約 70%）用的是原資料的怪物機率，比實戰樂觀。實戰表現請看「對局紀錄」的統計。Upstream's is steadier; push score averages more but crashes more often. The simulation looks 64 futures ahead per move, the live advice 1,024, so live results run a little higher. Before v2.0.0 the figures (about 70% reaching 840k) used the original odds, more hopeful than the live game. See your own results in Your runs.
 
 ## 讀錯時 · When something is misread
 
@@ -82,7 +83,6 @@ The first time, Windows may show "Windows protected your PC" (the program isn't 
 | Ctrl + Alt + V | 顯示／隱藏提示 · Show or hide the hints |
 | Ctrl + Alt + D | 顯示／隱藏讀取結果 · Show or hide what was read |
 | Ctrl + Alt + B | 記下讀錯的畫面 · Set a misread picture aside |
-| Ctrl + Alt + Q | 關閉 SmartTorch · Quit |
 
 ## 版本紀錄 · Changelog
 

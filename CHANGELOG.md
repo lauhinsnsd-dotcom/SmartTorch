@@ -3,6 +3,28 @@
 每個版本更新了什麼。有新版本時，SmartTorch 的更新提示也會顯示該版本的內容。
 What each version changed. When a new version is out, SmartTorch's update note shows its part.
 
+## v2.0.0
+
+**渴癮症助手：模擬資料修正 · Vorax helper: the simulation's data corrected**
+- 對照兩位玩家 63 局實戰紀錄後發現，原資料的怪物機率與遊戲不符：新出的怪是首領約 3%（原資料 16%），魔法怪較多。建議裡模擬的未來改用實戰機率，評估局面的公式也以新機率重新訓練（同一批 1,500 局比較：原作者模式達 840k 由 52.7% 升至 56.2%）。顯示的「達 840k」機率會比以前低，但更接近實戰。 Two players' 63 runs showed the original data's monster odds don't match the game: a new monster is a boss about 3% of the time (16% in the data), and magic more often. The advice's futures now use the live odds, and the board value judging boards was trained again with them (the same 1,500 games: upstream's mode reached 840k 56.2% of the time, up from 52.7%). The odds of 840k shown are lower than before, and closer to what you get.
+- 說明中的模擬數字已更新為實戰機率下的結果。 The simulated figures in the guide are now the live odds' ones.
+- 育雛的後代卡（子一代至子三代：寄生蟲卵、爬蟲卵簇、寄生蟲蛹、爬蟲蛹簇、寄生蝶、破繭蝶群）不在原資料中，以前讀不到；現在能認出，並標示「出現就選」。 The cards a Xenopanacea: Brood leaves (子一代 to 子三代), not in the original data, weren't read; they're now told and marked as always taken.
+
+**渴癮症助手 · Vorax helper**
+- 離開渴癮畫面一定會收起提示和選卡框：遊戲日誌沒記到時，SmartTorch 也會自己發現（約 10 秒內）。 Leaving the Vorax screen always takes the hints and the picker's card away: when the game's log doesn't say so, SmartTorch notices by itself (within about 10 s).
+- 在城鎮等地方按 Ctrl+Alt+X 不再讀出錯誤內容，會提示「現在不是渴癮畫面」。 Ctrl+Alt+X outside Vorax no longer reads the town as a board: it says it isn't the Vorax screen.
+- 減少卡頓：計算讓出 CPU 給遊戲（較低優先級，並留 1–2 個核心）。 Fewer hitches: the advice leaves the game the CPU first (below normal priority, a core or two left free).
+- Windows 截圖失敗或全黑時，自動改用另一種方式；仍擷取不到畫面時，「遊戲視窗」顯示紅點，疑難排解有處理方法。 When Windows' capture fails or comes back black, another way is used; still no picture, the Game window line shows a red dot, with what to do in Troubleshooting.
+- 對局紀錄保留多 4 倍，打幾百局統計也不會減少；回報問題會附上全部紀錄。 Four times the runs are kept, so the statistics last for hundreds of runs; reports carry them all.
+- 移除 Ctrl+Alt+Q（關閉 SmartTorch）；請用右下角圖示右鍵 →「結束」。 Ctrl+Alt+Q (quit) is gone: right-click the tray icon → Quit.
+
+**更新 · Updates**
+- 網絡不穩時也能更新：下載中斷會從斷點續傳，卡住會自動重試。 Updates get through an unsteady connection: a download cut off goes on from where it stopped, a stalled one is tried again.
+- 「檢查更新」連不上 GitHub 時會顯示「檢查失敗」，不再誤報「已是最新版本」；更新失敗會提示怎麼做。 Check for updates says when it can't reach GitHub, instead of "the latest"; a failed update says what to do.
+
+**囚獸助手 · Tartarus helper**
+- 修正：在 SmartTorch 裡更新囚獸助手會失敗（更新途中被重新開啟）。 Fixed: updating the Tartarus Solver from SmartTorch failed (it was started again mid-update).
+
 ## v1.0.7
 
 **渴癮症助手 · Vorax helper**

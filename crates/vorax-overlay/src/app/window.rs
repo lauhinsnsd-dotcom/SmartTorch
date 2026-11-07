@@ -113,7 +113,6 @@ const WM_WAKE: u32 = WM_APP + 1;
 const WM_TRAY: u32 = WM_APP + 2;
 const HK_TOGGLE: i32 = 1;
 const HK_SNAP: i32 = 2;
-const HK_QUIT: i32 = 3;
 /// not in upstream: show or hide what was read (Ctrl+Alt+D)
 const HK_READ: i32 = 4;
 /// the toolbox: the last picture set aside for the report (Ctrl+Alt+B)
@@ -245,7 +244,7 @@ pub fn create(fonts: Fonts, rx: Receiver<ToUi>, to_self: Sender<ToUi>, tx: Sende
             instance,
             None,
         )?;
-        for (id, vk) in [(HK_TOGGLE, 'V'), (HK_SNAP, 'X'), (HK_QUIT, 'Q'), (HK_READ, 'D'), (HK_MARK, 'B')] {
+        for (id, vk) in [(HK_TOGGLE, 'V'), (HK_SNAP, 'X'), (HK_READ, 'D'), (HK_MARK, 'B')] {
             if RegisterHotKey(hwnd, id, HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0 | MOD_NOREPEAT.0), vk as u32).is_err() {
                 note(&format!("hotkey Ctrl+Alt+{vk} is taken by another program"));
             }
@@ -458,7 +457,6 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
                 HK_SNAP => {
                     with_state(|s| s.tx.send(ToWorker::Snap).ok());
                 }
-                HK_QUIT => quit(hwnd),
                 HK_READ => {
                     with_state(toggle_read);
                 }
@@ -567,7 +565,7 @@ fn tray_menu(hwnd: HWND) {
         rows.push(Row::Action { id: MENU_SNAP, label: tr("立即讀取畫面", "Read the board now"), shortcut: "Ctrl+Alt+X".into() });
         rows.push(Row::Separator);
         rows.push(Row::Action { id: MENU_HUB, label: tr("開啟主視窗", "Open the main window"), shortcut: String::new() });
-        rows.push(Row::Action { id: MENU_QUIT, label: tr("結束", "Quit"), shortcut: "Ctrl+Alt+Q".into() });
+        rows.push(Row::Action { id: MENU_QUIT, label: tr("結束", "Quit"), shortcut: String::new() });
         (rows, s.fonts.clone())
     }) else {
         return;

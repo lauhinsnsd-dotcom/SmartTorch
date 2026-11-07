@@ -29,8 +29,8 @@ If Windows shows "Windows protected your PC", click More info → Run anyway.
 
 - 按視窗的 ✕ 只會縮到右下角，工具繼續執行。點右下角圖示可再開啟。
   The window's ✕ only puts it in the tray; click the tray icon to open it again.
-- 完全關閉：右下角圖示按右鍵 →「結束」，或 Ctrl + Alt + Q。
-  To quit: right-click the tray icon → Quit, or Ctrl + Alt + Q.
+- 完全關閉：右下角圖示按右鍵 →「結束」。
+  To quit: right-click the tray icon → Quit.
 - 左下角可切換 繁體／简体／EN。 Switch 繁體 / 简体 / EN at the bottom left.
 - 設定 → 一般：開機自動啟動、開遊戲時自動啟動工具。
   Settings → General: start with Windows, start the tools with the game.
@@ -87,7 +87,6 @@ Ctrl + Alt + X   立即讀取 / Read the board now
 Ctrl + Alt + V   顯示／隱藏提示 / Show or hide the hints
 Ctrl + Alt + D   顯示／隱藏讀取結果 / Show or hide what was read
 Ctrl + Alt + B   記下讀錯的畫面 / Set a misread picture aside
-Ctrl + Alt + Q   關閉 SmartTorch / Quit
 
 
 【讀錯時 / When something is misread】

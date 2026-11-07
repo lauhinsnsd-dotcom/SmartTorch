@@ -87,7 +87,7 @@ pub fn run(args: &[String]) {
             menu::Row::Separator,
             menu::Row::Action { id: 0, label: "對局紀錄".into(), shortcut: "查看".into() },
             menu::Row::Separator,
-            menu::Row::Action { id: 0, label: "結束".into(), shortcut: "Ctrl+Alt+Q".into() },
+            menu::Row::Action { id: 0, label: "結束".into(), shortcut: String::new() },
         ];
         // the menu as it usually is: the game's log on
         let plain = args.iter().any(|a| a == "--plain");
