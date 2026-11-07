@@ -1,0 +1,1 @@
+solver (mean): 1500 games in 585.4s (2.6 games/s)  mean 999096  median 912552  p10 355345  p90 1701160  ≥840k 58.9%  ≥1.12M 33.4%

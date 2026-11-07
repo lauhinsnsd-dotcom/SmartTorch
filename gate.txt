@@ -1,0 +1,5 @@
+1500 games, the same seeds for both   champion  old.txt   challenger  new-scores.txt
+reached 840k:              883 (58.9%)   878 (58.5%)
+average counted to 840k:   703406   705826
+the challenger reached 840k in 298 games the champion didn't, and missed 303 it reached (chance of a split like this by luck: 87.0%)
+pass=no
