@@ -316,6 +316,35 @@ pub struct Settings {
     /// file is never changed)
     #[serde(default)]
     pub tartarus_base: Option<(u64, u64)>,
+    /// the toolbox: the player's own programs (自訂啟動), as many places as LAUNCHERS (fewer: the rest unset)
+    #[serde(default)]
+    pub launchers: Vec<Launcher>,
+}
+
+/// The places for the player's own programs on the 自訂啟動 page.
+pub const LAUNCHERS: usize = 2;
+
+/// One of the player's own programs: opened by its button, or as the game opens (when `auto`), as 易火 is; never
+/// closed by the toolbox.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct Launcher {
+    /// the name the player gave it (empty: the page names it by its place)
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub exe: Option<PathBuf>,
+    #[serde(default)]
+    pub auto: bool,
+}
+
+impl Settings {
+    /// The place `i` of the player's own programs (made when unset).
+    pub fn launcher(&mut self, i: usize) -> &mut Launcher {
+        if self.launchers.len() <= i {
+            self.launchers.resize(i + 1, Launcher::default());
+        }
+        &mut self.launchers[i]
+    }
 }
 
 fn yes() -> bool {
@@ -324,7 +353,7 @@ fn yes() -> bool {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, auto_vorax: None, auto_tartarus: None, auto_etor: false, etor_exe: None, stats_since: 0.0, first_run_done: false, close_hint_shown: false, tartarus_exe: None, tartarus_base: None, lang: String::new(), picker: None }
+        Settings { shelley: 6, shown: true, ocr: true, accent: 0, script: 0, aggressive: false, log_path: None, auto_game: true, auto_vorax: None, auto_tartarus: None, auto_etor: false, etor_exe: None, stats_since: 0.0, first_run_done: false, close_hint_shown: false, tartarus_exe: None, tartarus_base: None, lang: String::new(), picker: None, launchers: Vec::new() }
     }
 }
 
@@ -393,6 +422,12 @@ pub fn choose_tartarus(owner: Option<Hwnd>) -> Option<PathBuf> {
 pub fn choose_etor(owner: Option<Hwnd>) -> Option<PathBuf> {
     let t = crate::zh::tr("選擇 ETor", "Choose ETor");
     choose_file(owner, &t, &[("ETor (*.exe)", "*.exe")])
+}
+
+/// Windows' file dialog for one of the player's own programs (自訂啟動); None when cancelled.
+pub fn choose_program(owner: Option<Hwnd>) -> Option<PathBuf> {
+    let t = crate::zh::tr("選擇 .exe", "Choose a program (.exe)");
+    choose_file(owner, &t, &[("(*.exe)", "*.exe")])
 }
 
 /// Windows' file dialog: a file to open, of these kinds (name, pattern); None when cancelled.

@@ -968,6 +968,7 @@ fn state_json(s: &mut State) -> String {
         "autoTartarus": s.settings.auto_tartarus(),
         "autoEtor": s.settings.auto_etor,
         "etor": etor_json(s),
+        "launchers": launchers_json(s),
         "firstRunDone": s.settings.first_run_done,
         "vorax": {
             "running": s.running,
@@ -1238,6 +1239,53 @@ fn from_hub(text: &str) {
                 }
             });
         }
+        // 自訂啟動: the player's own programs, by their place ("i")
+        "launcherOpen" | "launcherChoose" | "launcherClear" | "launcherName" | "launcherAuto" => {
+            let i = v["i"].as_u64().unwrap_or(0) as usize;
+            if i >= super::sys::LAUNCHERS {
+                return;
+            }
+            match cmd {
+                "launcherOpen" => {
+                    with_state(|s| {
+                        if let Some(exe) = super::etor::installed(s.settings.launcher(i).exe.as_deref()) {
+                            if super::etor::running(Some(&exe)).is_none() && !super::etor::program_opening(&exe) {
+                                super::etor::open_program(&exe);
+                            }
+                        }
+                    });
+                }
+                // the dialog runs its own message loop: never inside the state's borrow
+                "launcherChoose" => {
+                    if let Some(p) = super::sys::choose_program(super::hub::hwnd()) {
+                        with_state(|s| {
+                            note(&format!("program {} chosen: {}", i + 1, p.display()));
+                            s.settings.launcher(i).exe = Some(p);
+                            s.settings.save();
+                        });
+                    }
+                }
+                "launcherClear" => {
+                    with_state(|s| {
+                        note(&format!("program {} cleared", i + 1));
+                        *s.settings.launcher(i) = super::sys::Launcher::default();
+                        s.settings.save();
+                    });
+                }
+                "launcherName" => {
+                    with_state(|s| {
+                        s.settings.launcher(i).name = v["name"].as_str().unwrap_or("").trim().chars().take(20).collect();
+                        s.settings.save();
+                    });
+                }
+                _ => {
+                    with_state(|s| {
+                        s.settings.launcher(i).auto = v["on"].as_bool().unwrap_or(false);
+                        s.settings.save();
+                    });
+                }
+            }
+        }
         "etorChoose" => {
             // the dialog runs its own message loop: never inside the state's borrow
             if let Some(p) = super::sys::choose_etor(super::hub::hwnd()) {
@@ -1337,6 +1385,20 @@ fn tick(s: &mut State) -> bool {
                 None => note("the game opened: ETor isn't chosen yet, not opened"),
             }
         }
+        // the player's own programs the same way: only opened, never closed
+        if open {
+            for i in 0..super::sys::LAUNCHERS {
+                let l = s.settings.launcher(i).clone();
+                if !l.auto {
+                    continue;
+                }
+                match super::etor::installed(l.exe.as_deref()) {
+                    Some(e) if super::etor::running(Some(&e)).is_none() && !super::etor::program_opening(&e) => super::etor::open_program(&e),
+                    Some(_) => {}
+                    None => note(&format!("the game opened: program {} isn't chosen yet, not opened", i + 1)),
+                }
+            }
+        }
         if open {
             if vorax && !s.running {
                 s.running = true;
@@ -1372,6 +1434,26 @@ fn etor_json(s: &State) -> serde_json::Value {
         "running": running,
         "opening": !running && super::etor::opening(),
     })
+}
+
+/// The player's own programs (自訂啟動) as the page shows them.
+fn launchers_json(s: &mut State) -> serde_json::Value {
+    (0..super::sys::LAUNCHERS)
+        .map(|i| {
+            let l = s.settings.launcher(i).clone();
+            let exe = super::etor::installed(l.exe.as_deref());
+            let running = exe.as_deref().is_some_and(|e| super::etor::running(Some(e)).is_some());
+            serde_json::json!({
+                "name": l.name,
+                // chosen, but no longer there: shown so the player sees why it doesn't open
+                "chosen": l.exe.as_ref().map(|p| p.display().to_string()),
+                "exe": exe.as_ref().map(|p| p.display().to_string()),
+                "running": running,
+                "opening": !running && exe.as_deref().is_some_and(super::etor::program_opening),
+                "auto": l.auto,
+            })
+        })
+        .collect()
 }
 
 fn check_tartarus(s: &State) {

@@ -131,7 +131,7 @@ function toSc(t) {
 }
 
 let S = null;           // the state, from SmartTorch
-let page = "vorax";     // vorax | tartarus | etor | codes | settings
+let page = "vorax";     // vorax | tartarus | etor | launch | codes | settings
 let CODES = null;       // 流派碼: [{name, code}], from SmartTorch's codes.json; saved whole after each change
 let editing = -1;       // the code being changed, or -1
 let drawn = "";         // the 流派碼 page as drawn (page and language): not drawn again while it's open, so typing isn't lost
@@ -154,6 +154,7 @@ function nav() {
     ["vorax", L("渴癮症助手", "Vorax helper"), v ? (v.running ? "g" : "n") : ""],
     ["tartarus", L("囚獸助手", "Tartarus helper"), t && t.installed ? (t.running ? "g" : "n") : ""],
     ["etor", L("易火", "ETor"), S && S.etor && S.etor.exe ? (S.etor.running ? "g" : "n") : ""],
+    ["launch", L("自訂啟動", "Custom launchers"), launchDot()],
     ["codes", L("流派碼", "Build codes"), ""],
     ["settings", L("設定", "Settings"), S && S.update ? "newdot" : ""],
   ];
@@ -337,6 +338,7 @@ function general() {
       <div class="swrow">${sw(S.autoVorax, "set", "autoVorax", L("渴癮症助手", "Vorax helper"))}<span>${L("渴癮症助手", "Vorax helper")}</span></div>
       <div class="swrow">${sw(S.autoTartarus, "set", "autoTartarus", L("囚獸助手", "Tartarus helper"))}<span>${L("囚獸助手", "Tartarus helper")}</span>${S.tartarus && S.tartarus.installed ? "" : `<span class="note">${L("尚未安裝", "not installed yet")}</span>`}</div>
       <div class="swrow">${sw(S.autoEtor, "set", "autoEtor", L("易火", "ETor"))}<span>${L("易火", "ETor")}</span><span class="note">${S.etor && S.etor.exe ? L("只會自動開啟，不會自動關閉", "opened only, never closed") : L("尚未設定位置", "not chosen yet")}</span></div>
+      ${(S.launchers || []).map((l, i) => `<div class="swrow"><button class="sw ${l.auto ? "on" : ""}" aria-pressed="${l.auto}" aria-label="${esc(launchName(l, i))}" data-cmd="launcherAuto" data-i="${i}" data-on="${!l.auto}"><i></i></button><span ${l.name ? "data-noconv" : ""}>${esc(launchName(l, i))}</span><span class="note">${l.exe ? L("只會自動開啟，不會自動關閉", "opened only, never closed") : L("尚未設定位置", "not chosen yet")}</span></div>`).join("")}
     </div>
     <p class="para sep">${L("按視窗的 ✕ 只會縮到右下角，工具繼續執行。要完全關閉，請在右下角圖示按右鍵 →「結束」。", "The window's ✕ only puts it in the tray: the tools keep running. To close SmartTorch, right-click its tray icon → Quit.")}</p>
     <div class="sep" style="display:flex;flex-direction:column;gap:12px">${upd}</div>
@@ -413,6 +415,49 @@ function etor() {
   </section>
   <div class="tip"><b>${L("Windows 詢問權限？", "Windows asks for permission?")}</b> ${L("易火需要系統管理員權限，每次開啟時 Windows 都會詢問「是否允許變更」，請按「是」。", "ETor needs administrator rights, so Windows asks each time it's opened: press Yes.")}</div>
   <p class="note" style="margin:0">${L("易火是其他作者的程式，請自行從其官方管道下載安裝。SmartTorch 只負責開啟它，不會修改或讀取它的資料。", "ETor is another author's program: install it from its own official source. SmartTorch only opens it, and neither changes nor reads its data.")}</p>`;
+}
+
+// 自訂啟動: the player's own programs, opened as 易火 is
+const launchName = (l, i) => l.name || L(`自訂 ${i + 1}`, `Custom ${i + 1}`);
+function launchDot() {
+  const ls = (S && S.launchers || []).filter((l) => l.exe);
+  return ls.length ? (ls.some((l) => l.running) ? "g" : "n") : "";
+}
+function launch() {
+  const cards = (S.launchers || []).map((l, i) => {
+    const state = l.running ? `<span class="badge run">${L("已開啟", "Open")}</span>`
+      : l.opening ? `<span class="badge stop">${L("開啟中…", "Opening…")}</span>`
+      : l.exe ? `<span class="badge stop">${L("未開啟", "Not open")}</span>`
+      : `<span class="badge stop">${L("尚未設定", "Not chosen")}</span>`;
+    const where = l.exe
+      ? `${dot("g")}<div style="min-width:0"><div class="path" data-noconv>${esc(l.exe)}</div></div>`
+      : l.chosen
+      ? `${dot("n")}<div style="min-width:0"><div>${L("找不到這個程式（可能已移動或刪除），請重新選擇：", "This program isn't there any more (moved or deleted?): choose it again:")}</div><div class="path" data-noconv>${esc(l.chosen)}</div></div>`
+      : `${dot("n")}<div>${L("尚未設定：按「選擇…」揀一個程式（.exe）", "Not chosen yet: press Choose… and pick a program (.exe)")}</div>`;
+    return `
+  <section class="card" aria-label="${esc(launchName(l, i))}">
+    <div class="row" style="justify-content:space-between;gap:8px">
+      <div style="font-size:18px;font-weight:700" ${l.name ? "data-noconv" : ""}>${esc(launchName(l, i))}</div>
+      <div class="row" style="gap:8px">${state}
+        <button class="btn big ${l.running ? "" : "gold"}" data-launch="open" data-i="${i}" ${!l.exe || l.running || l.opening ? "disabled" : ""}>${L("開啟", "Open")}</button></div>
+    </div>
+    <div class="grid3 sep">
+      <div class="k">${L("程式位置", "Program")}</div><div class="v">${where}</div>
+      <button class="btn small" data-launch="choose" data-i="${i}">${L("選擇…", "Choose…")}</button>
+    </div>
+    <div class="row" style="gap:8px;justify-content:flex-end">
+      <button class="btn small" data-launch="name" data-i="${i}">${L("改名…", "Rename…")}</button>
+      <button class="btn small" data-launch="clear" data-i="${i}" ${l.chosen || l.name || l.auto ? "" : "disabled"}>${L("清除", "Clear")}</button>
+    </div>
+  </section>`;
+  }).join("");
+  return `
+  <div class="head">
+    <div><h1>${L("自訂啟動", "Custom launchers")}</h1><div class="sub">${L("自己選兩個程式，在這裏一鍵開啟，或在「設定」選開遊戲時自動開啟", "Two programs of your choice: open them here, or have them opened with the game (Settings)")}</div></div>
+  </div>
+  ${cards}
+  <div class="tip"><b>${L("Windows 詢問權限？", "Windows asks for permission?")}</b> ${L("有些程式需要系統管理員權限，開啟時 Windows 會詢問「是否允許變更」，請按「是」。", "Some programs need administrator rights, so Windows asks when they're opened: press Yes.")}</div>
+  <p class="note" style="margin:0">${L("這些是你自己選的程式，SmartTorch 只負責開啟，不會自動關閉，也不會修改或讀取它們的資料。", "These are programs you chose: SmartTorch only opens them. It never closes them, and neither changes nor reads their data.")}</p>`;
 }
 
 function codeRow(c, i) {
@@ -537,7 +582,7 @@ function render() {
   drawn = page === "codes" ? key : "";
   const keep = page === "codes" ? ["cn", "cc"].map((id) => { const e = document.getElementById(id); return e ? e.value : ""; }) : null;
   const top = main.scrollTop;
-  main.innerHTML = page === "vorax" ? vorax() : page === "tartarus" ? tartarus() : page === "codes" ? codes() : page === "etor" ? etor() : settings();
+  main.innerHTML = page === "vorax" ? vorax() : page === "tartarus" ? tartarus() : page === "codes" ? codes() : page === "etor" ? etor() : page === "launch" ? launch() : settings();
   main.scrollTop = top;
   if (keep) ["cn", "cc"].forEach((id, k) => { const e = document.getElementById(id); if (e) e.value = keep[k]; });
   if (sc) convert(main);
@@ -562,6 +607,7 @@ document.addEventListener("click", (e) => {
     if (confirm(S.lang === "sc" ? toSc(words) : words)) send({ cmd: t.dataset.confirm });
     return;
   }
+  if (t.dataset.launch) { launchAction(t.dataset.launch, Number(t.dataset.i)); return; }
   const cmd = t.dataset.cmd;
   if (!cmd) return;
   if (cmd === "set") {
@@ -569,6 +615,8 @@ document.addEventListener("click", (e) => {
     if (v === "true" || v === "false") v = v === "true";
     else if (/^\d+$/.test(v)) v = Number(v);
     send({ cmd, key: t.dataset.key, value: v });
+  } else if (cmd === "launcherAuto") {
+    send({ cmd, i: Number(t.dataset.i), on: t.dataset.on === "true" });
   } else if (cmd === "vorax" || cmd === "tartarus" || cmd === "tartarusShow") {
     send({ cmd, on: t.dataset.on === "true" });
   } else {
@@ -576,6 +624,20 @@ document.addEventListener("click", (e) => {
   }
   if (t.dataset.then) { page = t.dataset.then; render(); }
 });
+
+function launchAction(act, i) {
+  const l = (S.launchers || [])[i];
+  if (!l) return;
+  const ask = (words) => (S.lang === "sc" ? toSc(words) : words);
+  if (act === "open") send({ cmd: "launcherOpen", i });
+  else if (act === "choose") send({ cmd: "launcherChoose", i });
+  else if (act === "name") {
+    const name = prompt(ask(L("名稱（最多 20 字，留空用預設名稱）：", "Name (up to 20 characters; empty for the default):")), l.name || "");
+    if (name !== null) send({ cmd: "launcherName", i, name });
+  } else if (act === "clear") {
+    if (confirm(ask(L(`清除「${launchName(l, i)}」的設定？（程式本身不會被刪除）`, `Clear "${launchName(l, i)}"? (The program itself isn't deleted.)`)))) send({ cmd: "launcherClear", i });
+  }
+}
 
 function codeAction(act, i) {
   if (!CODES) return;

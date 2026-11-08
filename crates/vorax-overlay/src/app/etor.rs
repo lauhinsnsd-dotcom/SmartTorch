@@ -1,7 +1,8 @@
 //! The toolbox's 易火 page: a launcher for 易火 ETor, another author's closed-source tool (not part of SmartTorch,
 //! never shipped or downloaded by it). The player installs it; the toolbox finds it (chosen, or as it runs) and
 //! opens it, by the button or as the game opens (when that's on). Its window is left as it is, and nothing closes
-//! it. It asks for administrator rights, so Windows asks the player each time it's opened.
+//! it. It asks for administrator rights, so Windows asks the player each time it's opened. The 自訂啟動 page's
+//! programs (the player's own choice) are opened and looked for the same way.
 
 use super::sys::note;
 use std::cell::Cell;
@@ -71,6 +72,8 @@ pub fn running(chosen: Option<&Path>) -> Option<PathBuf> {
 thread_local! {
     static LAST_LOOK: Cell<Option<Instant>> = const { Cell::new(None) };
     static OPENED: Cell<Option<Instant>> = const { Cell::new(None) };
+    /// the player's own programs (自訂啟動) as they were opened
+    static PROGRAMS_OPENED: std::cell::RefCell<std::collections::HashMap<PathBuf, Instant>> = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 /// Found as it runs, when not chosen yet: looked for every 10 seconds at most.
@@ -92,7 +95,22 @@ pub fn opening() -> bool {
 /// thread of its own: Windows' question waits for the player.
 pub fn open(exe: &Path) {
     OPENED.with(|c| c.set(Some(Instant::now())));
-    note(&format!("opening ETor: {}", exe.display()));
+    shell_open(exe, "ETor");
+}
+
+/// One of the player's own programs (自訂啟動), opened as 易火 is: as from its shortcut, from its own folder.
+pub fn open_program(exe: &Path) {
+    PROGRAMS_OPENED.with(|m| m.borrow_mut().insert(exe.to_path_buf(), Instant::now()));
+    shell_open(exe, "a program of the player's");
+}
+
+/// Whether one of the player's own programs was opened in the last half minute (Windows may still be asking).
+pub fn program_opening(exe: &Path) -> bool {
+    PROGRAMS_OPENED.with(|m| m.borrow().get(exe).is_some_and(|t| t.elapsed() < Duration::from_secs(30)))
+}
+
+fn shell_open(exe: &Path, what: &'static str) {
+    note(&format!("opening {what}: {}", exe.display()));
     let exe = exe.to_path_buf();
     std::thread::spawn(move || unsafe {
         use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE};
@@ -102,7 +120,7 @@ pub fn open(exe: &Path) {
         let r = ShellExecuteW(HWND::default(), &HSTRING::from("open"), &HSTRING::from(exe.as_os_str()), PCWSTR::null(), &dir, SW_SHOWNORMAL);
         // above 32: opened; else Windows' error (5: the player said no to the rights)
         if r.0 as isize <= 32 {
-            note(&format!("ETor not opened (ShellExecute {})", r.0 as isize));
+            note(&format!("{what} not opened (ShellExecute {})", r.0 as isize));
         }
     });
 }
