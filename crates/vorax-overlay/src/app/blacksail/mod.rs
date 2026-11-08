@@ -23,6 +23,32 @@ static PICKED: AtomicUsize = AtomicUsize::new(0);
 /// Whether the game's log was found and followed.
 static FOLLOWING: AtomicBool = AtomicBool::new(false);
 
+/// For now (gathering pictures to tell the 虛海夜火 apart by): the page where they're put in, pictured once a
+/// second after it opens, into FRAMES. To go once the beacons are read.
+const BEACON_PAGE: &str = "VoidBeacon";
+const BEACON_WAIT: Duration = Duration::from_secs(1);
+
+/// %APPDATA%\VoraxRs\blacksail-frames: the beacon pages pictured.
+pub fn frames_dir() -> PathBuf {
+    super::sys::data_dir().join("blacksail-frames")
+}
+
+fn save_beacon_page(capturer: &super::capture::Capturer) {
+    match grab(capturer) {
+        Ok(img) => {
+            let dir = frames_dir();
+            let _ = std::fs::create_dir_all(&dir);
+            let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            let path = dir.join(format!("beacon-{}-{}x{}.png", super::sys::local_stamp(secs), img.width, img.height));
+            match img.save_png(&path) {
+                Ok(()) => note(&format!("Blacksail: beacon page pictured ({}x{})", img.width, img.height)),
+                Err(e) => note(&format!("Blacksail: beacon picture not saved ({e})")),
+            }
+        }
+        Err(e) => note(&format!("Blacksail: beacon page not pictured: {e}")),
+    }
+}
+
 pub fn on() -> bool {
     ON.load(Ordering::SeqCst)
 }
@@ -173,6 +199,8 @@ fn read(chosen_log: Option<PathBuf>, generation: usize) {
     let mut width = 2560.0f32;
     // the last capture problem noted (once until it changes)
     let mut told = String::new();
+    // the beacon page: open at the last look, and when it opened (until it's pictured)
+    let (mut beacon, mut beacon_at): (bool, Option<Instant>) = (false, None);
     while live() {
         let lines = follower.poll();
         let mut confirmed: Option<u8> = None;
@@ -220,6 +248,18 @@ fn read(chosen_log: Option<PathBuf>, generation: usize) {
             note(&format!("Blacksail: seal {}", describe(&pick)));
             picks.push(pick);
             show(&picks);
+        }
+        let beacon_now = pages.void_page() == Some(BEACON_PAGE);
+        if beacon_now && !beacon {
+            beacon_at = Some(Instant::now());
+        }
+        if !beacon_now {
+            beacon_at = None;
+        }
+        beacon = beacon_now;
+        if beacon_at.is_some_and(|t| t.elapsed() >= BEACON_WAIT) {
+            beacon_at = None;
+            save_beacon_page(&capturer);
         }
         let current = pages.void_page().filter(|p| *p == SEAL_PAGE).map(str::to_string);
         if current != page {

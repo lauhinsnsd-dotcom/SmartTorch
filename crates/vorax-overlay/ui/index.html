@@ -409,6 +409,7 @@ function blacksail() {
   <section class="card" aria-label="${L("狀態", "Status")}">
     <div class="row">${dot(b.on ? "g" : "n")}<div>${now}</div></div>
     <p class="para" style="margin:0">${L("啟動後，遊戲上面會出現一個細框「黑帆 0/6」。每次揀封印秘語，SmartTorch 會讀卡面，把揀了的那條加到細框；離開虛海終港後自動清空。", "Once started, a small box (黑帆 0/6) shows over the game. Each time you pick a seal, SmartTorch reads the cards and adds the one picked to the box; it empties once you leave the port.")}</p>
+    <div class="row sep" style="gap:8px"><button class="btn small" data-cmd="blacksailFrames">${L("開啟截圖資料夾", "Open the pictures folder")}</button><span class="note">${L("測試用：每次進入「放入虛海夜火」畫面會存一張截圖", "For testing: one picture each time the beacon page opens")}</span></div>
     <p class="para" style="margin:0">${L("細框可以拖到任何位置；拖它的右下角（或右邊、下邊）可以放大縮小。位置和大小會記住。", "Drag the box anywhere; drag its lower right corner (or its right or lower edge) to make it bigger or smaller. Its place and size are kept.")}</p>
   </section>
   <div class="tip"><b>${L("支援的解析度", "Screens supported")}</b> ${L("1920×1080 請用「推薦值」介面縮放；2560×1440、2560×1600、3840×2160 用「推薦值」或「最小」都可以。要用無邊框或視窗模式。", "1920×1080: the recommended interface scale; 2560×1440, 2560×1600, 3840×2160: recommended or smallest. Borderless or windowed.")}</div>
