@@ -679,8 +679,8 @@ mod zh_tests {
         let f = built_in_fonts();
         assert!(f.cover(&["渴癮症助手 v2.0.1", "Update now"]));
         assert!(!f.cover(&["\u{9F98}"]));
-        // with no Windows fonts here, the same fonts again
-        assert!(!f.with_windows_chinese().cover(&["\u{9F98}"]));
+        // with Windows' Chinese font it's drawn (where there are no Windows fonts, the same fonts again)
+        assert_eq!(f.with_windows_chinese().cover(&["\u{9F98}"]), cfg!(windows));
     }
 
     /// Every character the overlay can show is in the built-in fonts, in Traditional and in Simplified (else: run
