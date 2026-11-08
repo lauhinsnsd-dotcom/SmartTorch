@@ -118,6 +118,9 @@ const CARD_SHIFT: [(f64, f64); 3] = [(6.0, 6.0), (0.0, 0.0), (-6.0, 6.0)];
 const HAND5_X: [f64; 5] = [-385.0, -163.0, 70.0, 303.0, 515.0];
 const HAND5_Y: [f64; 5] = [1141.0, 1121.0, 1111.0, 1121.0, 1141.0];
 const HAND5_TILT: [f64; 5] = [-0.11, -0.06, 0.0, 0.05, 0.11];
+/// Not in upstream: a hand of five sits further left and lower as the interface grows, per unit of scale above 100%
+/// (reference pixels; measured at the recommended scale, about 125%: its middle card's title was cut off and missed).
+const HAND5_UI_SHIFT: (f64, f64) = (-60.0, 48.0);
 /// Art and title in a card's own frame, in reference pixels from its centre.
 pub const CARD_LOCAL_ART: Rect = Rect::new(-50.0, -155.0, 100.0, 120.0);
 pub const CARD_LOCAL_TEXT: Rect = Rect::new(-100.0, -45.0, 185.0, 175.0);
@@ -236,7 +239,7 @@ pub fn layout_at(width: usize, height: usize, ui: f64) -> Layout {
         card_art: std::array::from_fn(|j| Rect::new(card_cx[j] - (CARD_ART.1 / 2.0) * k, bottom(CARD_ART.0), CARD_ART.1 * k, CARD_ART.2 * k)),
         card_face: std::array::from_fn(|j| Rect::new(card_cx[j] - (CARD_FACE.1 / 2.0) * k, bottom(CARD_FACE.0), CARD_FACE.1 * k, CARD_FACE.2 * k)),
         cards: std::array::from_fn(|j| CardPos { cx: card_cx[j] + CARD_SHIFT[j].0 * k, cy: bottom(CARD_CY + CARD_SHIFT[j].1), angle: CARD_TILT[j] }),
-        hand5: std::array::from_fn(|j| CardPos { cx: cx + HAND5_X[j] * k, cy: bottom(HAND5_Y[j]), angle: HAND5_TILT[j] }),
+        hand5: std::array::from_fn(|j| CardPos { cx: cx + (HAND5_X[j] + HAND5_UI_SHIFT.0 * (ui - 1.0)) * k, cy: bottom(HAND5_Y[j] + HAND5_UI_SHIFT.1 * (ui - 1.0)), angle: HAND5_TILT[j] }),
         header: rect(HEADER, cx, bottom(HEADER.y)),
         refresh: rect(REFRESH, cx, bottom(REFRESH.y)),
         round: rect(ROUND, 0.0, middle(ROUND.y)),
@@ -280,7 +283,7 @@ fn layout_narrow(width: usize, height: usize, ui: f64) -> Layout {
         card_art: std::array::from_fn(|j| Rect::new(card_cx[j] - (CARD_ART.1 / 2.0) * k, bottom(CARD_ART.0), CARD_ART.1 * k, CARD_ART.2 * k)),
         card_face: std::array::from_fn(|j| Rect::new(card_cx[j] - (CARD_FACE.1 / 2.0) * k, bottom(CARD_FACE.0), CARD_FACE.1 * k, CARD_FACE.2 * k)),
         cards: std::array::from_fn(|j| CardPos { cx: card_cx[j] + CARD_SHIFT[j].0 * k, cy: bottom(CARD_CY + CARD_SHIFT[j].1), angle: CARD_TILT[j] }),
-        hand5: std::array::from_fn(|j| CardPos { cx: cx + HAND5_X[j] * k, cy: bottom(HAND5_Y[j]), angle: HAND5_TILT[j] }),
+        hand5: std::array::from_fn(|j| CardPos { cx: cx + (HAND5_X[j] + HAND5_UI_SHIFT.0 * (ui - 1.0)) * k, cy: bottom(HAND5_Y[j] + HAND5_UI_SHIFT.1 * (ui - 1.0)), angle: HAND5_TILT[j] }),
         header: rect(HEADER, cx, bottom(HEADER.y)),
         refresh: rect(REFRESH, cx, bottom(REFRESH.y)),
         round: rect(ROUND, 0.0, middle(ROUND.y)),

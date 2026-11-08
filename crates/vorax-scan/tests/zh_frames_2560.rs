@@ -87,3 +87,38 @@ fn icons_over_short_names_at_1440() {
     assert_eq!(round, 6);
     assert_eq!(ui, 1.25);
 }
+
+/// The hand read with the titles' first reads given (one per card, left to right) and every read again returning
+/// nothing, the way the overlay reads it.
+fn hand(name: &str, titles: &[&str]) -> Vec<String> {
+    use vorax_scan::titles::{pictures_in, read_titles_in, Script};
+    let data = scan_data();
+    let img = decode(name);
+    let names = scan(&img, data, false);
+    let (dy, ui) = (names.hand_dy.unwrap_or(0.0), names.ui());
+    let pics = |phase: &str, size: usize, slots: &[usize]| pictures_in(&img, data, phase, size, slots, dy, ui, Script::Han);
+    let mut given = titles.iter();
+    let mut read = |_: &Img| given.next().map_or(String::new(), |t| t.to_string());
+    read_titles_in(&img, names, data, &mut read, Some(&pics), Script::Han).state.hand
+}
+
+/// The middle card's picture in a hand of five, best match first.
+fn middle_picture(name: &str) -> String {
+    use vorax_scan::titles::{pictures_in, Script};
+    let data = scan_data();
+    let img = decode(name);
+    let names = scan(&img, data, false);
+    let p = pictures_in(&img, data, "potion", 5, &[2], names.hand_dy.unwrap_or(0.0), names.ui(), Script::Han);
+    p[&2].ranks.first().map(|r| r.0.clone()).unwrap_or_default()
+}
+
+#[test]
+fn a_hand_of_five_at_the_recommended_scale() {
+    // the hand sits lower and further left than at 100%: the middle card's title was cut off at the bottom of the
+    // place read, and never read (its neighbour's read short: 靶向異種激素 as 異種激素)
+    assert_eq!(middle_picture("potion-hand5-1600-recommended.png"), "Twin Hormone - Pest");
+    let h = hand("potion-hand5b-1600-recommended.png", &["脊 髓 灰 質 溶 液", "腦 霧 酊 劑", "細 肢 藥 粉 一 蠱 蟲", "強 效 祛 異 藥 粉", "細 肢 藥 粉 - 骨 衛 兵"]);
+    assert_eq!(h, ["Gray Matter Spinal Solution", "Brain Fog Tincture", "Slender-Limb Powder - Pest", "Potent Xenopurge Powder", "Slender-Limb Powder - Bone Sentry"]);
+    let h = hand("potion-hand5-1600-recommended.png", &["麻 藥 酊 劑 - 覺 醒 者", "靶 向 異 種 激 素", "孿 生 激 素 一 蠱 蟲", "卵 殼 藥 粉", "化 骨 油 膏"]);
+    assert_eq!(h, ["Anesthetic Tincture - Agito", "Targeted Xeno-Hormone", "Twin Hormone - Pest", "Eggshell Powder", "Osteolytic Ointment"]);
+}
