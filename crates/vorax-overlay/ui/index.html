@@ -398,22 +398,21 @@ function blacksail() {
   const b = S.blacksail || {};
   const state = b.on ? `<span class="badge run">${L("運行中", "Running")}</span>` : `<span class="badge stop">${L("已停止", "Stopped")}</span>`;
   const now = !b.on ? L("未啟動", "Off")
-    : !b.following ? L("等待遊戲日誌…（遊戲設定要開「啟用日誌」）", "Waiting for the game's log… (turn on Enable Log in the game's settings)")
-    : L(`今局已揀 ${b.picked}/6`, `${b.picked}/6 picked this run`);
+    : !b.following ? L("等待遊戲日誌…（遊戲設定需開啟「啟用日誌」）", "Waiting for the game's log… (turn on Enable Log in the game's settings)")
+    : L(`本局已選 ${b.picked}/6`, `${b.picked}/6 picked this run`);
   return `
   <div class="head">
-    <div><h1>${L("黑帆", "Blacksail")}</h1><div class="sub">${L("虛海封印秘語：在遊戲上面列出今局已揀的秘語", "Blacksail seals: the ones picked this run, listed over the game")}</div></div>
+    <div><h1>${L("黑帆", "Blacksail")}</h1><div class="sub">${L("虛海封印秘語：在遊戲畫面上列出本局已選的秘語", "Blacksail seals: the ones picked this run, listed over the game")}</div></div>
     <div class="row">${state}
       <button class="btn big ${b.on ? "" : "gold"}" data-cmd="blacksail" data-on="${!b.on}">${b.on ? L("停止", "Stop") : L("啟動", "Start")}</button></div>
   </div>
   <section class="card" aria-label="${L("狀態", "Status")}">
     <div class="row">${dot(b.on ? "g" : "n")}<div>${now}</div></div>
-    <p class="para" style="margin:0">${L("啟動後，遊戲上面會出現一個細框「黑帆 0/6」。每次揀封印秘語，SmartTorch 會讀卡面，把揀了的那條加到細框；離開虛海終港後自動清空。", "Once started, a small box (黑帆 0/6) shows over the game. Each time you pick a seal, SmartTorch reads the cards and adds the one picked to the box; it empties once you leave the port.")}</p>
-    <div class="row sep" style="gap:8px"><button class="btn small" data-cmd="blacksailFrames">${L("開啟截圖資料夾", "Open the pictures folder")}</button><span class="note">${L("測試用：每次進入「放入虛海夜火」畫面會存一張截圖", "For testing: one picture each time the beacon page opens")}</span></div>
-    <p class="para" style="margin:0">${L("細框可以拖到任何位置；拖它的右下角（或右邊、下邊）可以放大縮小。位置和大小會記住。", "Drag the box anywhere; drag its lower right corner (or its right or lower edge) to make it bigger or smaller. Its place and size are kept.")}</p>
+    <p class="para" style="margin:0">${L("啟動後，遊戲畫面上會出現「黑帆 0/6」小視窗。每次選擇封印秘語時，SmartTorch 會讀取卡片內容，將選中的秘語加入清單；離開虛海終港後自動清空。", "Once started, a small window (黑帆 0/6) shows over the game. Each time you pick a seal, SmartTorch reads the cards and adds the one picked to the list; it empties once you leave the port.")}</p>
+    <p class="para" style="margin:0">${L("拖曳小視窗可移動位置；拖曳右下角（或右邊、下邊）可調整大小。按「透明」後滑鼠可穿透清單，再按一次即恢復；按「×」關閉小視窗（等同停止）。位置、大小會自動記住。", "Drag the window to move it; drag its lower right corner (or its right or lower edge) to resize it. 透明 (see-through) lets clicks pass through the list, press it again to undo; × closes it (the same as Stop). Its place and size are kept.")}</p>
   </section>
-  <div class="tip"><b>${L("支援的解析度", "Screens supported")}</b> ${L("1920×1080 請用「推薦值」介面縮放；2560×1440、2560×1600、3840×2160 用「推薦值」或「最小」都可以。要用無邊框或視窗模式。", "1920×1080: the recommended interface scale; 2560×1440, 2560×1600, 3840×2160: recommended or smallest. Borderless or windowed.")}</div>
-  <p class="note" style="margin:0">${L("開工具前今局已揀的秘語只知道顏色，內容會顯示「開工具前揀，內容未知」。SmartTorch 只讀畫面與日誌，不會操作遊戲。", "Seals picked this run before it started are known by colour only. SmartTorch only reads the screen and the log; it never plays the game.")}</p>`;
+  <div class="tip"><b>${L("支援的解析度", "Screens supported")}</b> ${L("1920×1080 請使用「推薦值」介面縮放；2560×1440、2560×1600、3840×2160 使用「推薦值」或「最小」皆可。需使用無邊框或視窗模式。", "1920×1080: the recommended interface scale; 2560×1440, 2560×1600, 3840×2160: recommended or smallest. Borderless or windowed.")}</div>
+  <p class="note" style="margin:0">${L("啟動前本局已選的秘語只能得知顏色，內容會顯示為「啟動前已選，內容未知」。SmartTorch 只讀取畫面與日誌，不會操作遊戲。", "Seals picked this run before it started are known by colour only. SmartTorch only reads the screen and the log; it never plays the game.")}</p>`;
 }
 
 function etor() {

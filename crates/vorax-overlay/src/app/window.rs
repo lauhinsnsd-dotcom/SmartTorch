@@ -1310,12 +1310,6 @@ fn from_hub(text: &str) {
                 super::blacksail::stop();
             }
         }
-        // for now: the beacon pages pictured (blacksail::frames_dir), shown in Explorer
-        "blacksailFrames" => {
-            let dir = super::blacksail::frames_dir();
-            let _ = std::fs::create_dir_all(&dir);
-            let _ = std::process::Command::new("explorer.exe").arg(&dir).spawn();
-        }
         "tartarusCheck" => {
             with_state(|s| check_tartarus(s));
         }

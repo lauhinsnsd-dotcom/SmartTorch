@@ -12,6 +12,10 @@ pub struct Pick {
     pub before: bool,
 }
 
+/// The box's buttons: see-through (clicks pass through the box to the game) and close (黑帆 stopped).
+pub const SEE_THROUGH: &str = "透明";
+pub const CLOSE: &str = "×";
+
 /// A run has 6 seals; the 7th pick starts the next run.
 pub const PER_RUN: usize = 6;
 
@@ -43,7 +47,7 @@ pub fn rows(picks: &[Pick]) -> Vec<(String, (u8, u8, u8))> {
     for (i, p) in picks.iter().enumerate() {
         let what = match p.seal {
             Some(s) => short(s),
-            None if p.before => "（開工具前揀，內容未知）".to_string(),
+            None if p.before => "（啟動前已選，內容未知）".to_string(),
             None => "（讀不到）".to_string(),
         };
         out.push((format!("{}. {what}", i + 1), color(p.rarity)));
@@ -57,7 +61,7 @@ pub fn describe(p: &Pick) -> String {
     match (p.seal, p.category) {
         (Some(s), c) => format!("{rarity} {} {}", c.unwrap_or("?"), short(s)),
         (None, Some(c)) => format!("{rarity} {c} （讀不到）"),
-        (None, None) if p.before => format!("{rarity} （開工具前揀，內容未知）"),
+        (None, None) if p.before => format!("{rarity} （啟動前已選，內容未知）"),
         (None, None) => format!("{rarity} （讀不到）"),
     }
 }
@@ -157,7 +161,7 @@ mod tests {
         let picks = vec![Pick { rarity: Some(2), category: Some("財富"), seal, before: false }, Pick { rarity: Some(4), category: None, seal: None, before: false }, Pick { rarity: Some(1), category: None, seal: None, before: true }];
         let r = rows(&picks);
         assert_eq!(r[0].0, "黑帆 3/6");
-        assert_eq!(r[3].0, "3. （開工具前揀，內容未知）");
+        assert_eq!(r[3].0, "3. （啟動前已選，內容未知）");
         assert_eq!(r[1], ("1. 基礎掉落中，追憶碎絮的掉落數量額外 + 53%".to_string(), (90, 165, 255)));
         assert_eq!(r[2], ("2. （讀不到）".to_string(), (255, 190, 70)));
         assert_eq!(describe(&picks[0]), "藍 財富 基礎掉落中，追憶碎絮的掉落數量額外 + 53%");
