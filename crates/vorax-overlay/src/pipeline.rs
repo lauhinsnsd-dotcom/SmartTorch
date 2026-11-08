@@ -74,6 +74,8 @@ pub struct Pipeline {
     /// every card asked about on this board (`ask_key`), by place: a pick counts even when a read since made the
     /// card out
     asked: std::collections::BTreeMap<usize, Ask>,
+    /// the places on this board (`pick_key`) the player said none of the choices is: not asked about again
+    skipped: std::collections::BTreeSet<usize>,
     /// the picker's test (Troubleshooting): the first card counts as not read, its title half read
     pub test_unknown: bool,
 }
@@ -104,7 +106,7 @@ pub fn shelley_rerolls(level: i32) -> i32 {
 
 impl Pipeline {
     pub fn new(shelley: i32) -> Pipeline {
-        Pipeline { tracker: InstrumentTracker::default(), shelley, instrument_refreshes: None, last: None, protocols: false, resumed: false, script: Script::Latin, picks: Default::default(), pick_key: String::new(), learned: Default::default(), asks: Vec::new(), ask_key: String::new(), asked: Default::default(), test_unknown: false }
+        Pipeline { tracker: InstrumentTracker::default(), shelley, instrument_refreshes: None, last: None, protocols: false, resumed: false, script: Script::Latin, picks: Default::default(), pick_key: String::new(), learned: Default::default(), asks: Vec::new(), ask_key: String::new(), asked: Default::default(), skipped: Default::default(), test_unknown: false }
     }
 
     /// The board's instrument rerolls: as read on an instrument offer, else carried from the last one this game,
@@ -224,6 +226,7 @@ impl Pipeline {
         let key = Self::board_key(reading);
         if key != self.pick_key {
             self.picks.clear();
+            self.skipped.clear();
             self.pick_key = key.clone();
         }
         if key != self.ask_key {
@@ -253,6 +256,9 @@ impl Pipeline {
         let size = Self::hand_size(reading);
         let pos = layout_at(w, h, reading.ui()).shifted_hand(reading.hand_dy.unwrap_or(0.0)).hand_at(size).to_vec();
         for (j, text) in Self::unknown_slots(reading) {
+            if self.skipped.contains(&j) {
+                continue;
+            }
             let pictures = reading.hand_ranks.as_ref().and_then(|r| r.get(j)).cloned().unwrap_or_default();
             let candidates = vorax_scan::titles::candidates(scan_data(), phase, &text, self.script, &pictures, 5);
             let at = pos.get(j).map_or((w as f64 / 2.0, h as f64 / 2.0), |c| (c.cx, c.cy));
@@ -274,6 +280,15 @@ impl Pipeline {
             Self::put_card(reading, slot, name);
         }
         self.readvise()
+    }
+
+    /// Not in upstream: the player said the card at `slot` on the last board is none of the choices. Nothing is
+    /// learned; the card stays not made out, and isn't asked about again on this board. What was asked, for the log.
+    pub fn skip(&mut self, slot: usize) -> Option<Ask> {
+        let ask = self.asks.iter().find(|a| a.slot == slot).or_else(|| self.asked.get(&slot))?.clone();
+        self.skipped.insert(slot);
+        self.asks.retain(|a| a.slot != slot);
+        Some(ask)
     }
 
     /// The size of the last board's picture.
@@ -462,6 +477,20 @@ pub fn still_vorax(frame: &Img, ui: f64, hand_dy: f64) -> bool {
 mod tests {
     use super::{resumes, Pipeline};
     use vorax_scan::reading::Problem;
+
+    #[test]
+    fn none_of_the_choices_learns_nothing_and_isnt_asked_again() {
+        let mut p = Pipeline::new(6);
+        let ask = |slot: usize| super::Ask { slot, phase: "potion", text: "\u{85e5} \u{5291}".into(), candidates: vec!["Potion Kit (Small)".into()], at: (0.0, 0.0) };
+        p.asks = vec![ask(0), ask(2)];
+        let skipped = p.skip(0).expect("asked about");
+        assert_eq!(skipped.candidates, ["Potion Kit (Small)"]);
+        assert_eq!(p.asks.iter().map(|a| a.slot).collect::<Vec<_>>(), [2]);
+        assert!(p.skipped.contains(&0));
+        assert_eq!(p.learned.count(), 0);
+        // a place not asked about: nothing
+        assert!(p.skip(1).is_none());
+    }
 
     #[test]
     fn a_picked_card_goes_back_in_its_place() {

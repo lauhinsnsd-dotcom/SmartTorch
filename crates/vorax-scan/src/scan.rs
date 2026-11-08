@@ -39,12 +39,34 @@ fn scan_scales(captured: &Img, data: &ScanData, pictures: bool, upstream: bool) 
     if round_sure(&first) || first.has(|p| matches!(p, Problem::NotFound)) || (animating && (upstream || LAST_UI_SURE.get())) {
         return first;
     }
+    // not in upstream: a picture just short of normal colours (the screen fading in, a card's preview over the
+    // panel) can tip the colour correction on and spoil the round; read as it is at the same scale, it may be sure
+    // (rather than sure, wrongly, at another scale)
+    let corrected = |r: &Reading| r.debug.as_ref().is_some_and(|d| d.corrected);
+    if !upstream && !animating && corrected(&first) {
+        let r = scan_with(captured, data, pictures, Some(0.0), false, last, upstream);
+        if round_sure(&r) && !r.has(|p| matches!(p, Problem::Animating)) {
+            LAST_UI_SURE.set(true);
+            return r;
+        }
+    }
     for ui in UI_SCALES.into_iter().filter(|&u| u != last) {
         let r = scan_with(captured, data, pictures, Some(0.0), true, ui, upstream);
         if round_sure(&r) && !(animating && r.has(|p| matches!(p, Problem::Animating))) {
             LAST_UI.set(ui);
             LAST_UI_SURE.set(true);
             return r;
+        }
+    }
+    // not in upstream: the same, at the other scales
+    if !upstream && !animating {
+        for ui in UI_SCALES.into_iter().filter(|&u| u != last) {
+            let r = scan_with(captured, data, pictures, Some(0.0), false, ui, upstream);
+            if round_sure(&r) && !r.has(|p| matches!(p, Problem::Animating)) {
+                LAST_UI.set(ui);
+                LAST_UI_SURE.set(true);
+                return r;
+            }
         }
     }
     first

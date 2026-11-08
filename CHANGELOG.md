@@ -3,6 +3,19 @@
 每個版本更新了什麼。有新版本時，SmartTorch 的更新提示也會顯示該版本的內容。
 What each version changed. When a new version is out, SmartTorch's update note shows its part.
 
+## v2.0.1
+
+**解析度 · Resolutions**
+- 支援 16:10 螢幕（2560×1600 等）：以前培養槽全部讀不到、卡片常讀錯，現在介面縮放用推薦值或最小值都讀得準。 16:10 screens (2560×1600 and the like) are supported: the tanks weren't read at all and cards were often misread; at the recommended or the smallest interface scale they now read well.
+- 修正：名字較短的怪物（例如弓兵、輕弩兵、赤鏜螂）的種類圖示，常被誤認為覺醒者（2560×1440 等解析度都有）。 Fixed: monsters with short names (弓兵, 輕弩兵, 赤鏜螂…) often had their family icon taken for Agito's (at 2560×1440 too).
+- 修正：畫面剛打開、顏色偏暗時，第一回合有時讀不到回合數和卡片。 Fixed: with the screen just opened and its colours a little dark, the first round's number and cards were sometimes not read.
+
+**渴癮症助手 · Vorax helper**
+- 讀不到卡時的選卡框新增「沒有這張卡」：選項裡都沒有時按它，工具不會記住錯誤的卡名，並會自動記下這個畫面，之後按「回報問題」就會附上。 The picker's card for a card not read has "None of these": when none of the choices is the card, press it. Nothing wrong is learned, and the picture is set aside for Report a problem.
+
+**更新 · Updates**
+- 更新提示的「更新內容」不再把中文字顯示成方格（改用 Windows 內建的中文字型）。由於顯示更新內容的是舊版本，這個修正要到下一次更新時才看得到。 The update's What's new no longer shows Chinese characters as boxes (Windows' own Chinese font draws them). The notes are shown by the version you have, so this shows from the next update on.
+
 ## v2.0.0
 
 **渴癮症助手：模擬資料修正 · Vorax helper: the simulation's data corrected**

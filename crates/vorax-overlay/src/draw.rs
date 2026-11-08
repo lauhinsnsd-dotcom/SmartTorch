@@ -360,6 +360,16 @@ impl Face {
         Face { fonts }
     }
 
+    /// Not in upstream: whether one of its fonts has every character of `t` (spaces and line ends aside).
+    pub fn covers(&self, t: &str) -> bool {
+        t.chars().filter(|c| !c.is_whitespace()).all(|c| self.fonts.iter().any(|f| f.lookup_glyph_index(c) != 0))
+    }
+
+    /// The same, with more fonts after its own.
+    fn and(&self, more: Option<fontdue::Font>) -> Face {
+        Face { fonts: self.fonts.iter().cloned().chain(more).collect() }
+    }
+
     /// The font a character is drawn in.
     fn of(&self, c: char) -> &fontdue::Font {
         self.fonts.iter().find(|f| f.lookup_glyph_index(c) != 0).unwrap_or(&self.fonts[0])
@@ -393,6 +403,22 @@ impl Fonts {
             (!fonts.is_empty()).then(|| Face::new(fonts))
         };
         Some(Fonts { bold: face(load(&["segoeuib.ttf", "arialbd.ttf"]), ZH_BOLD, SC_BOLD)?, regular: face(load(&["segoeui.ttf", "arial.ttf"]), ZH_REGULAR, SC_REGULAR)? })
+    }
+
+    /// Not in upstream: whether these fonts draw every character of each text.
+    pub fn cover(&self, texts: &[&str]) -> bool {
+        texts.iter().all(|t| self.regular.covers(t) && self.bold.covers(t))
+    }
+
+    /// Not in upstream: the same, then Windows' own Chinese font (Microsoft YaHei, else JhengHei, else SimSun) for
+    /// text the built-in subsets don't hold, as a release's notes do (their characters showed as boxes). Large and
+    /// slow to load: only for such text, and dropped with it.
+    pub fn with_windows_chinese(&self) -> Fonts {
+        let dir = std::env::var("WINDIR").map(|w| format!("{w}\\Fonts")).unwrap_or_else(|_| "C:\\Windows\\Fonts".into());
+        let load = |names: &[&str]| {
+            names.iter().find_map(|n| std::fs::read(format!("{dir}\\{n}")).ok()).and_then(|b| fontdue::Font::from_bytes(b, fontdue::FontSettings { collection_index: 0, ..Default::default() }).ok())
+        };
+        Fonts { bold: self.bold.and(load(&["msyhbd.ttc", "msjhbd.ttc", "msyh.ttc", "msjh.ttc", "simsun.ttc"])), regular: self.regular.and(load(&["msyh.ttc", "msjh.ttc", "simsun.ttc"])) }
     }
 }
 
@@ -645,6 +671,16 @@ mod zh_tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn text_beyond_the_built_in_fonts_is_told() {
+        // a release's notes: what the built-in subsets hold, and a character they don't (it showed as a box)
+        let f = built_in_fonts();
+        assert!(f.cover(&["渴癮症助手 v2.0.1", "Update now"]));
+        assert!(!f.cover(&["\u{9F98}"]));
+        // with no Windows fonts here, the same fonts again
+        assert!(!f.with_windows_chinese().cover(&["\u{9F98}"]));
     }
 
     /// Every character the overlay can show is in the built-in fonts, in Traditional and in Simplified (else: run

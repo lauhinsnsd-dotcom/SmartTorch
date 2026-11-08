@@ -49,7 +49,7 @@ The first time, Windows may show "Windows protected your PC" (the program isn't 
 
 | 客戶端 · Client | 解析度 · Resolution |
 |---|---|
-| 繁體／簡體中文 · Chinese | 2560×1440、3840×2160 已測試；其他解析度可能讀不準 · tested at 2560×1440 and 3840×2160; others may be misread |
+| 繁體／簡體中文 · Chinese | 已測試（遊戲「介面縮放」用推薦值或最小值）：1920×1080、2560×1080、2560×1440、2560×1600；3840×2160 建議用最小值。其他解析度可能讀不準 · tested (the game's interface scale at its recommended value or the smallest): 1920×1080, 2560×1080, 2560×1440, 2560×1600; at 3840×2160 the smallest is advised. Others may be misread |
 | English | 與原作者相同 · as the original Vorax solver reads it |
 
 請使用無邊框或視窗模式，不要用獨佔全螢幕。Play borderless or windowed, not in exclusive full screen.

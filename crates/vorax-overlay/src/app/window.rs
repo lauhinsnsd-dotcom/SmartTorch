@@ -100,6 +100,8 @@ pub enum ToWorker {
     OcrLang(Option<String>),
     /// the picker: the player picked this card for this place in the hand
     Pick(usize, String),
+    /// the picker: the player said the card at this place is none of the choices (not learned)
+    NoPick(usize),
     /// the picker turned on or off
     Picker(bool),
     /// the picker: forget the learned titles
@@ -143,8 +145,9 @@ const MENU_UPDATE_NOW: u32 = 61;
 const MENU_RELEASE_PAGE: u32 = 62;
 /// the toolbox's main window
 const MENU_HUB: u32 = 70;
-/// the picker: card k of the candidates for place j is MENU_PICK + 8 j + k
+/// the picker: card k of the candidates for place j is MENU_PICK + 8 j + k; k = MENU_PICK_NONE: none of them
 const MENU_PICK: u32 = 200;
+const MENU_PICK_NONE: u32 = 7;
 const MENU_PICK_END: u32 = 280;
 /// the main window, opened from the message loop (never from inside the state's borrow)
 const WM_OPEN_HUB: u32 = WM_APP + 3;
@@ -633,13 +636,21 @@ fn whats_new(s: &State) {
     if s.updating.is_some() {
         return super::menu::open(s.hwnd, download_rows(s), s.fonts.clone());
     }
+    // not in upstream: the notes' characters beyond the built-in fonts drawn in Windows' own Chinese font (they
+    // showed as boxes)
+    let fonts = if s.fonts.cover(&[&r.notes]) {
+        s.fonts.clone()
+    } else {
+        note("the release's notes need Windows' Chinese font");
+        Rc::new(s.fonts.with_windows_chinese())
+    };
     let rows = vec![
         Row::Header { title: if english() { format!("What's new in v{}", r.version) } else { format!("v{} 更新內容", r.version) }, status: if english() { format!("this is v{}", update::current()) } else { format!("你目前是 v{}", update::current()) } },
-        Row::Lines(wrap(&s.fonts, &r.notes, 18)),
+        Row::Lines(wrap(&fonts, &r.notes, 18)),
         Row::Action { id: MENU_RELEASE_PAGE, label: tr("GitHub 上的版本頁面", "Its page on GitHub"), shortcut: tr("開啟", "Open") },
         Row::Buttons { primary: (MENU_UPDATE_NOW, tr("立即更新", "Update now")), secondary: Some((MENU_LATER, tr("稍後", "Later"))) },
     ];
-    super::menu::open(s.hwnd, rows, s.fonts.clone());
+    super::menu::open(s.hwnd, rows, fonts);
 }
 
 /// The update's card while it downloads.
@@ -734,6 +745,10 @@ unsafe fn command(hwnd: HWND, id: u32) {
         MENU_HUB => super::hub::open(None),
         c if (MENU_PICK..MENU_PICK_END).contains(&c) => {
             let (slot, k) = (((c - MENU_PICK) / 8) as usize, ((c - MENU_PICK) % 8) as usize);
+            if k == MENU_PICK_NONE as usize {
+                with_state(|s| not_picked(s, slot));
+                return;
+            }
             with_state(|s| {
                 let name = s.asks.iter().find(|a| a.slot == slot).and_then(|a| a.candidates.get(k).cloned());
                 if let Some(n) = name {
@@ -785,6 +800,9 @@ fn show_picker(s: &mut State) {
             let label = if english() { name.clone() } else { crate::draw::zh_name(phase, name) };
             rows.push(Row::Action { id: MENU_PICK + 8 * a.slot as u32 + k as u32, label, shortcut: String::new() });
         }
+        // not in upstream: none of them (a pick made anyway would be learned, and the wrong card named again)
+        rows.push(Row::Separator);
+        rows.push(Row::Action { id: MENU_PICK + 8 * a.slot as u32 + MENU_PICK_NONE, label: tr("沒有這張卡", "None of these"), shortcut: String::new() });
     }
     // the game's bottom left corner, a little in (2.5% of its height)
     let inset = (gh as f64 * 0.025) as i32;
@@ -792,6 +810,17 @@ fn show_picker(s: &mut State) {
     s.ask_shown = true;
     // the "？" over the card asked about
     s.placed = None;
+}
+
+/// Not in upstream: the player said the card at a place is none of the choices. The worker learns nothing and sets
+/// the picture aside for the report; the other cards not made out are asked again, else the game gets the focus
+/// back.
+fn not_picked(s: &mut State, slot: usize) {
+    let _ = s.tx.send(ToWorker::NoPick(slot));
+    s.asks.retain(|a| a.slot != slot);
+    s.ask_shown = false;
+    s.placed = None;
+    focus_game();
 }
 
 /// The player picked a card for a place: the worker advises again with it (and learns it); the other cards not

@@ -165,15 +165,20 @@ fn has_icon(img: &Img, r: &Rect) -> bool {
 fn icon_above_name(img: &Img, l: &Layout, i: usize) -> Option<Rect> {
     let nb = l.name_band[i];
     let size = l.icon[i].w;
-    let bright = |x: usize, y: usize| {
+    let luma = |x: usize, y: usize| {
         let (r, g, b) = img.px(x, y);
-        0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64 >= 95.0
+        0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64
     };
     let (x0, x1) = (nb.x.max(0.0) as usize, ((nb.x + nb.w) as usize).min(img.width));
     let (y0, y1) = (nb.y.max(0.0) as usize, ((nb.y + nb.h) as usize).min(img.height));
     if x1 <= x0 || y1 <= y0 {
         return None;
     }
+    // lit: as bright as text, and over half as bright as the brightest of the band. The tank's shelf runs dimly lit
+    // through the band behind the name: joined to a short name (弓兵), it moved the name's middle off the icon
+    let peak = (y0..y1).flat_map(|y| (x0..x1).map(move |x| (x, y))).map(|(x, y)| luma(x, y)).fold(0.0, f64::max);
+    let floor = 95f64.max(0.55 * peak);
+    let bright = |x: usize, y: usize| luma(x, y) >= floor;
     // the name's columns: the run of bright columns nearest the band's middle (gaps between characters bridged)
     let cols: Vec<usize> = (x0..x1).filter(|&x| (y0..y1).filter(|&y| bright(x, y)).count() >= 2).collect();
     let gap = (12.0 * l.k) as usize;

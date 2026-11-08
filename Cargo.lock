@@ -589,7 +589,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vorax"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "libm",
  "rayon",
@@ -599,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "vorax-cli"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "png",
  "rayon",
@@ -610,7 +610,7 @@ dependencies = [
 
 [[package]]
 name = "vorax-overlay"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "embed-resource",
  "fontdue",
@@ -628,7 +628,7 @@ dependencies = [
 
 [[package]]
 name = "vorax-scan"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "base64",
  "indexmap",

@@ -144,6 +144,13 @@ pub fn run(opts: Options, tx: Sender<ToUi>, waker: Waker, rx: Receiver<ToWorker>
                         send(ToUi::Learned(pipe.learned.count()));
                     }
                 }
+                // not in upstream: none of the choices: nothing learned, and the picture set aside for the report
+                ToWorker::NoPick(slot) => {
+                    if let Some(a) = pipe.skip(slot) {
+                        note(&format!("card {} is none of the choices, says the player: [{}] → {:?} (not learned)", slot + 1, a.text.replace('\n', " / "), a.candidates));
+                        send(ToUi::Marked(super::report::mark(last_kept.as_deref())));
+                    }
+                }
                 ToWorker::Picker(on) => picker = on,
                 ToWorker::TestPicker(on) => {
                     pipe.test_unknown = on;

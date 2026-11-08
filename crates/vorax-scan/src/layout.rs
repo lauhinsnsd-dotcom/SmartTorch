@@ -42,6 +42,28 @@ const WIDE_16_9: TankScene = TankScene {
     glass_y: [185.0, 455.0],
     glass_half_w: 115.0,
 };
+/// Not in upstream: 16:10 (2560x1600), where the game fits its interface to the screen's width and the 3D scene sits
+/// a little smaller and to the right. Its y in a 1600-high picture (2560 wide), measured on 2560x1600 frames at the
+/// recommended and smallest interface scales; the labels' rows at 100%.
+const NARROW_16_10: TankScene = TankScene {
+    x: [-678.7, -342.8, -13.8, 317.3, 660.3, 1014.1],
+    name: [620.5, 640.5],
+    total: [641.5, 661.5],
+    aq: [662.0, 682.0],
+    icon: 609.0,
+    icon_size: 22.0,
+    glass_x: [-649.1, -324.4, -2.0, 322.1, 657.1, 999.2],
+    glass_y: [315.0, 569.6],
+    glass_half_w: 108.7,
+};
+/// The height of the picture each scene's y are in (at its own width: 2560 for 16:9 and 16:10).
+const WIDE_16_9_H: f64 = 1440.0;
+const NARROW_16_10_H: f64 = 1600.0;
+/// The labels' row they grow about, in each scene.
+const NARROW_LABEL_MID: f64 = 651.5;
+/// On 16:10 a label grows to the right as well as about its total's row: its icon sits this much further right per
+/// unit of interface scale above 100% (reference pixels; measured at both scales).
+const NARROW_LABEL_DX: f64 = 41.0;
 const LABEL_HALF_W: f64 = 200.0;
 
 fn mix(a: f64, b: f64, t: f64) -> f64 {
@@ -62,6 +84,28 @@ fn scene(aspect: f64) -> TankScene {
         glass_y: pair(WIDE_16_9.glass_y, ULTRAWIDE.glass_y),
         glass_half_w: mix(WIDE_16_9.glass_half_w, ULTRAWIDE.glass_half_w, t),
     }
+}
+
+/// Not in upstream: a screen narrower than 16:9, between 16:10 and 16:9 (or 16:10's where narrower still). Its y
+/// from the middle of the picture, in reference pixels (16:9's height is REF_H).
+fn narrow_scene(aspect: f64) -> (TankScene, f64) {
+    let t = ((16.0 / 9.0 - aspect) / (16.0 / 9.0 - 1.6)).max(0.0).min(1.0);
+    let (a, b) = (&WIDE_16_9, &NARROW_16_10);
+    let (ha, hb) = (WIDE_16_9_H / 2.0, NARROW_16_10_H / 2.0);
+    let y = |ya: f64, yb: f64| mix(ya - ha, yb - hb, t);
+    let pair = |pa: [f64; 2], pb: [f64; 2]| [y(pa[0], pb[0]), y(pa[1], pb[1])];
+    let scene = TankScene {
+        x: std::array::from_fn(|i| mix(a.x[i], b.x[i], t)),
+        name: pair(a.name, b.name),
+        total: pair(a.total, b.total),
+        aq: pair(a.aq, b.aq),
+        icon: y(a.icon, b.icon),
+        icon_size: mix(a.icon_size, b.icon_size, t),
+        glass_x: std::array::from_fn(|i| mix(a.glass_x[i], b.glass_x[i], t)),
+        glass_y: pair(a.glass_y, b.glass_y),
+        glass_half_w: mix(a.glass_half_w, b.glass_half_w, t),
+    };
+    (scene, y(LABEL_MID, NARROW_LABEL_MID))
 }
 
 const CARD_X0: f64 = -90.0;
@@ -162,6 +206,9 @@ pub fn layout(width: usize, height: usize) -> Layout {
 
 /// The layout with the interface at scale `ui` (UI_SCALES).
 pub fn layout_at(width: usize, height: usize, ui: f64) -> Layout {
+    if (width as f64) / (height as f64) < 16.0 / 9.0 - 1e-3 {
+        return layout_narrow(width, height, ui);
+    }
     let (wf, hf) = (width as f64, height as f64);
     let s = hf / REF_H;
     let k = s * ui;
@@ -186,6 +233,50 @@ pub fn layout_at(width: usize, height: usize, ui: f64) -> Layout {
         total_band: std::array::from_fn(|i| band(tank_cx[i], sc.total)),
         aq_band: std::array::from_fn(|i| band(tank_cx[i], sc.aq)),
         tank_glass: std::array::from_fn(|i| Rect::new(cx + (sc.glass_x[i] - sc.glass_half_w) * s, sc.glass_y[0] * s, 2.0 * sc.glass_half_w * s, (sc.glass_y[1] - sc.glass_y[0]) * s)),
+        card_art: std::array::from_fn(|j| Rect::new(card_cx[j] - (CARD_ART.1 / 2.0) * k, bottom(CARD_ART.0), CARD_ART.1 * k, CARD_ART.2 * k)),
+        card_face: std::array::from_fn(|j| Rect::new(card_cx[j] - (CARD_FACE.1 / 2.0) * k, bottom(CARD_FACE.0), CARD_FACE.1 * k, CARD_FACE.2 * k)),
+        cards: std::array::from_fn(|j| CardPos { cx: card_cx[j] + CARD_SHIFT[j].0 * k, cy: bottom(CARD_CY + CARD_SHIFT[j].1), angle: CARD_TILT[j] }),
+        hand5: std::array::from_fn(|j| CardPos { cx: cx + HAND5_X[j] * k, cy: bottom(HAND5_Y[j]), angle: HAND5_TILT[j] }),
+        header: rect(HEADER, cx, bottom(HEADER.y)),
+        refresh: rect(REFRESH, cx, bottom(REFRESH.y)),
+        round: rect(ROUND, 0.0, middle(ROUND.y)),
+        instrument_icon: std::array::from_fn(|j| {
+            let x = wf - (INSTRUMENT_RIGHT + INSTRUMENT_PITCH * j as f64) * k;
+            Rect::new(x - (INSTRUMENT_SIZE / 2.0) * k, (INSTRUMENT_Y - INSTRUMENT_SIZE / 2.0) * k, INSTRUMENT_SIZE * k, INSTRUMENT_SIZE * k)
+        }),
+    }
+}
+
+/// Not in upstream: a screen narrower than 16:9 (16:10). The game fits its interface to the width there: the panels
+/// and cards are as big as on a 16:9 screen as wide, kept to the bottom, the middle or the top as there, with the
+/// spare height between; the tanks' scene is measured (NARROW_16_10).
+fn layout_narrow(width: usize, height: usize, ui: f64) -> Layout {
+    let (wf, hf) = (width as f64, height as f64);
+    let s = wf / (REF_H * 16.0 / 9.0);
+    let k = s * ui;
+    let cx = wf / 2.0;
+    let my = hf / 2.0;
+    let bottom = |y: f64| hf - (REF_H - y) * k;
+    let middle = |y: f64| my + (y - REF_H / 2.0) * k;
+    let (sc, mid) = narrow_scene(wf / hf);
+    // the scene's y are from the middle of the picture
+    let label = |y: f64| my + (mid + (y - mid) * ui) * s;
+    let band = |x: f64, y: [f64; 2]| Rect::new(x - LABEL_HALF_W * s, label(y[0]), 2.0 * LABEL_HALF_W * s, (y[1] - y[0]) * k);
+    let tank_cx: [f64; 6] = std::array::from_fn(|i| cx + sc.x[i] * s);
+    let t = ((16.0 / 9.0 - wf / hf) / (16.0 / 9.0 - 1.6)).max(0.0).min(1.0);
+    let label_cx: [f64; 6] = std::array::from_fn(|i| tank_cx[i] + t * NARROW_LABEL_DX * (ui - 1.0) * s);
+    let card_cx: [f64; 3] = std::array::from_fn(|j| cx + (CARD_X0 + CARD_PITCH * j as f64) * k);
+    let rect = |r: Rect, x0: f64, y: f64| Rect::new(x0 + r.x * k, y, r.w * k, r.h * k);
+    Layout {
+        width,
+        height,
+        k,
+        tank_cx,
+        icon: std::array::from_fn(|i| Rect::new(label_cx[i] - (sc.icon_size / 2.0) * k, label(sc.icon) - (sc.icon_size / 2.0) * k, sc.icon_size * k, sc.icon_size * k)),
+        name_band: std::array::from_fn(|i| band(label_cx[i], sc.name)),
+        total_band: std::array::from_fn(|i| band(label_cx[i], sc.total)),
+        aq_band: std::array::from_fn(|i| band(label_cx[i], sc.aq)),
+        tank_glass: std::array::from_fn(|i| Rect::new(cx + (sc.glass_x[i] - sc.glass_half_w) * s, my + sc.glass_y[0] * s, 2.0 * sc.glass_half_w * s, (sc.glass_y[1] - sc.glass_y[0]) * s)),
         card_art: std::array::from_fn(|j| Rect::new(card_cx[j] - (CARD_ART.1 / 2.0) * k, bottom(CARD_ART.0), CARD_ART.1 * k, CARD_ART.2 * k)),
         card_face: std::array::from_fn(|j| Rect::new(card_cx[j] - (CARD_FACE.1 / 2.0) * k, bottom(CARD_FACE.0), CARD_FACE.1 * k, CARD_FACE.2 * k)),
         cards: std::array::from_fn(|j| CardPos { cx: card_cx[j] + CARD_SHIFT[j].0 * k, cy: bottom(CARD_CY + CARD_SHIFT[j].1), angle: CARD_TILT[j] }),

@@ -52,8 +52,8 @@ On the Surgical Preparation screen it marks the card and tanks to pick and the o
 - 原作者 / Upstream's：只追求達到 840k 的機率。 Only the odds of 840k count.
 - 衝分 / Push score：機率差不多時選平均分數較高的。 When the odds are close, the higher average score.
 
-中文客戶端已在 2560×1440 與 3840×2160 測試；其他解析度可能讀不準。
-A Chinese client is tested at 2560×1440 and 3840×2160; other resolutions may be misread.
+中文客戶端已測試（遊戲「介面縮放」用推薦值或最小值）：1920×1080、2560×1080、2560×1440、2560×1600；3840×2160 建議用最小值。其他解析度可能讀不準。
+A Chinese client is tested (the game's interface scale at its recommended value or the smallest): 1920×1080, 2560×1080, 2560×1440, 2560×1600; at 3840×2160 the smallest is advised. Other resolutions may be misread.
 
 
 【囚獸助手 / Tartarus helper】
