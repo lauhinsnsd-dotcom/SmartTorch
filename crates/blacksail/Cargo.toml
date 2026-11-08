@@ -1,0 +1,9 @@
+[package]
+name = "blacksail"
+description = "黑帆 (Blacksail): the seals picked this run, read from the seal screen's words and the game's log"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+png = "0.17"

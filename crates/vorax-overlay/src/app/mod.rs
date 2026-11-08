@@ -1,6 +1,7 @@
 //! The live overlay on Windows: one window thread (the overlay, tray icon and hotkeys) and one worker thread
 //! (the log, the pictures, the reading and the advice).
 
+mod blacksail;
 mod capture;
 mod etor;
 mod hub;

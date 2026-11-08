@@ -39,6 +39,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "blacksail"
+version = "2.0.1"
+dependencies = [
+ "png",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -612,6 +619,7 @@ dependencies = [
 name = "vorax-overlay"
 version = "2.0.1"
 dependencies = [
+ "blacksail",
  "embed-resource",
  "fontdue",
  "png",

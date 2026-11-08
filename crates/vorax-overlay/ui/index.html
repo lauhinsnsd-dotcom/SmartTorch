@@ -131,7 +131,7 @@ function toSc(t) {
 }
 
 let S = null;           // the state, from SmartTorch
-let page = "vorax";     // vorax | tartarus | etor | launch | codes | settings
+let page = "vorax";     // vorax | tartarus | blacksail | etor | launch | codes | settings
 let CODES = null;       // 流派碼: [{name, code}], from SmartTorch's codes.json; saved whole after each change
 let editing = -1;       // the code being changed, or -1
 let drawn = "";         // the 流派碼 page as drawn (page and language): not drawn again while it's open, so typing isn't lost
@@ -153,6 +153,7 @@ function nav() {
   const items = [
     ["vorax", L("渴癮症助手", "Vorax helper"), v ? (v.running ? "g" : "n") : ""],
     ["tartarus", L("囚獸助手", "Tartarus helper"), t && t.installed ? (t.running ? "g" : "n") : ""],
+    ["blacksail", L("黑帆", "Blacksail"), S && S.blacksail ? (S.blacksail.on ? "g" : "n") : ""],
     ["etor", L("易火", "ETor"), S && S.etor && S.etor.exe ? (S.etor.running ? "g" : "n") : ""],
     ["launch", L("自訂啟動", "Custom launchers"), launchDot()],
     ["codes", L("流派碼", "Build codes"), ""],
@@ -393,6 +394,27 @@ function about() {
   </section>`;
 }
 
+function blacksail() {
+  const b = S.blacksail || {};
+  const state = b.on ? `<span class="badge run">${L("運行中", "Running")}</span>` : `<span class="badge stop">${L("已停止", "Stopped")}</span>`;
+  const now = !b.on ? L("未啟動", "Off")
+    : !b.following ? L("等待遊戲日誌…（遊戲設定要開「啟用日誌」）", "Waiting for the game's log… (turn on Enable Log in the game's settings)")
+    : L(`今局已揀 ${b.picked}/6`, `${b.picked}/6 picked this run`);
+  return `
+  <div class="head">
+    <div><h1>${L("黑帆", "Blacksail")}</h1><div class="sub">${L("虛海封印秘語：在遊戲上面列出今局已揀的秘語", "Blacksail seals: the ones picked this run, listed over the game")}</div></div>
+    <div class="row">${state}
+      <button class="btn big ${b.on ? "" : "gold"}" data-cmd="blacksail" data-on="${!b.on}">${b.on ? L("停止", "Stop") : L("啟動", "Start")}</button></div>
+  </div>
+  <section class="card" aria-label="${L("狀態", "Status")}">
+    <div class="row">${dot(b.on ? "g" : "n")}<div>${now}</div></div>
+    <p class="para" style="margin:0">${L("啟動後，遊戲上面會出現一個細框「黑帆 0/6」。每次揀封印秘語，SmartTorch 會讀卡面，把揀了的那條加到細框；離開虛海終港後自動清空。", "Once started, a small box (黑帆 0/6) shows over the game. Each time you pick a seal, SmartTorch reads the cards and adds the one picked to the box; it empties once you leave the port.")}</p>
+    <p class="para" style="margin:0">${L("細框可以拖到任何位置；拖它的右下角（或右邊、下邊）可以放大縮小。位置和大小會記住。", "Drag the box anywhere; drag its lower right corner (or its right or lower edge) to make it bigger or smaller. Its place and size are kept.")}</p>
+  </section>
+  <div class="tip"><b>${L("支援的解析度", "Screens supported")}</b> ${L("1920×1080 請用「推薦值」介面縮放；2560×1440、2560×1600、3840×2160 用「推薦值」或「最小」都可以。要用無邊框或視窗模式。", "1920×1080: the recommended interface scale; 2560×1440, 2560×1600, 3840×2160: recommended or smallest. Borderless or windowed.")}</div>
+  <p class="note" style="margin:0">${L("開工具前今局已揀的秘語只知道顏色，內容會顯示「開工具前揀，內容未知」。SmartTorch 只讀畫面與日誌，不會操作遊戲。", "Seals picked this run before it started are known by colour only. SmartTorch only reads the screen and the log; it never plays the game.")}</p>`;
+}
+
 function etor() {
   const e = S.etor || {};
   const state = e.running ? `<span class="badge run">${L("已開啟", "Open")}</span>`
@@ -582,7 +604,7 @@ function render() {
   drawn = page === "codes" ? key : "";
   const keep = page === "codes" ? ["cn", "cc"].map((id) => { const e = document.getElementById(id); return e ? e.value : ""; }) : null;
   const top = main.scrollTop;
-  main.innerHTML = page === "vorax" ? vorax() : page === "tartarus" ? tartarus() : page === "codes" ? codes() : page === "etor" ? etor() : page === "launch" ? launch() : settings();
+  main.innerHTML = page === "vorax" ? vorax() : page === "tartarus" ? tartarus() : page === "blacksail" ? blacksail() : page === "codes" ? codes() : page === "etor" ? etor() : page === "launch" ? launch() : settings();
   main.scrollTop = top;
   if (keep) ["cn", "cc"].forEach((id, k) => { const e = document.getElementById(id); if (e) e.value = keep[k]; });
   if (sc) convert(main);
@@ -617,7 +639,7 @@ document.addEventListener("click", (e) => {
     send({ cmd, key: t.dataset.key, value: v });
   } else if (cmd === "launcherAuto") {
     send({ cmd, i: Number(t.dataset.i), on: t.dataset.on === "true" });
-  } else if (cmd === "vorax" || cmd === "tartarus" || cmd === "tartarusShow") {
+  } else if (cmd === "vorax" || cmd === "tartarus" || cmd === "tartarusShow" || cmd === "blacksail") {
     send({ cmd, on: t.dataset.on === "true" });
   } else {
     send({ cmd });

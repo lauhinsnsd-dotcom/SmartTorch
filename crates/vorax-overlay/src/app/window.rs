@@ -968,6 +968,11 @@ fn state_json(s: &mut State) -> String {
         "autoTartarus": s.settings.auto_tartarus(),
         "autoEtor": s.settings.auto_etor,
         "etor": etor_json(s),
+        "blacksail": {
+            "on": super::blacksail::on(),
+            "picked": super::blacksail::status().0,
+            "following": super::blacksail::status().1,
+        },
         "launchers": launchers_json(s),
         "firstRunDone": s.settings.first_run_done,
         "vorax": {
@@ -1294,6 +1299,15 @@ fn from_hub(text: &str) {
                     s.settings.etor_exe = Some(p);
                     s.settings.save();
                 });
+            }
+        }
+        // 黑帆: the box over the game and its reader, on or off (not kept: off at each start)
+        "blacksail" => {
+            if v["on"].as_bool().unwrap_or(false) {
+                let log = with_state(|s| s.settings.log_path.clone()).flatten();
+                super::blacksail::start(log);
+            } else {
+                super::blacksail::stop();
             }
         }
         "tartarusCheck" => {
