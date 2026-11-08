@@ -52,8 +52,8 @@ On the Surgical Preparation screen it marks the card and tanks to pick and the o
 - 原作者 / Upstream's：只追求達到 840k 的機率。 Only the odds of 840k count.
 - 衝分 / Push score：機率差不多時選平均分數較高的。 When the odds are close, the higher average score.
 
-中文客戶端已測試（遊戲「介面縮放」用推薦值或最小值）：1920×1080、2560×1080、2560×1440、2560×1600；3840×2160 建議用最小值。其他解析度可能讀不準。
-A Chinese client is tested (the game's interface scale at its recommended value or the smallest): 1920×1080, 2560×1080, 2560×1440, 2560×1600; at 3840×2160 the smallest is advised. Other resolutions may be misread.
+中文客戶端已測試（遊戲「介面縮放」用推薦值或最小值）：1920×1080、2560×1440、2560×1600；3840×2160 建議用最小值。其他解析度可能讀不準。
+A Chinese client is tested (the game's interface scale at its recommended value or the smallest): 1920×1080, 2560×1440, 2560×1600; at 3840×2160 the smallest is advised. Other resolutions may be misread.
 
 
 【囚獸助手 / Tartarus helper】
@@ -66,6 +66,18 @@ glcoder's Tartarus Solver: download and unpack it, run TartarusSolver.exe once a
 Settings opens its window.
 
 
+【黑帆備忘 / Blacksail Notes】
+
+虛海封印秘語：在主視窗「黑帆備忘」按「啟動」，遊戲上會出現小視窗。每次選擇秘語時讀取卡片，
+列出本局已選的秘語（最多 6 條），離開虛海終港後自動清空。拖曳可移動；拖曳右下角可調整大小；
+「透明」讓滑鼠穿透清單；「×」關閉。1920×1080 請用推薦值介面縮放；2560×1440、2560×1600、
+3840×2160 推薦值或最小值皆可。
+Blacksail seals: press Start on the Blacksail Notes page and a small window shows over the game. Each
+pick is read off the cards and listed (up to 6), emptied once you leave the port. Drag it to move it,
+its lower right corner to resize it; 透明 lets clicks pass through the list; × closes it. At 1920×1080 use
+the recommended interface scale; 2560×1440, 2560×1600, 3840×2160: recommended or smallest.
+
+
 【易火 / ETor】
 
 其他作者的收益統計工具「易火 ETor」的啟動器。請自行安裝，開啟一次後 SmartTorch 會自動記住位置
@@ -74,6 +86,13 @@ Settings opens its window.
 A launcher for ETor, another author's income tracker. Install it and open it once, and SmartTorch
 remembers it (or Choose… on the ETor page); then open it from SmartTorch, or with the game (Settings).
 It needs administrator rights, so Windows asks each time: press Yes. SmartTorch never touches its data.
+
+
+【自訂啟動 / Custom launchers】
+
+自己選兩個程式（.exe），可改名，在 SmartTorch 一鍵開啟；在「設定」可設定開遊戲時自動開啟（只開啟、不會關閉）。
+Two programs of your choice (renamed as you like): open them from SmartTorch, or with the game (Settings;
+opened only, never closed).
 
 
 【流派碼 / Build codes】

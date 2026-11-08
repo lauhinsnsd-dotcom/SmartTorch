@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/vorax", "crates/vorax-cli", "crates/vorax-scan", "crates/vorax-overlay", "crates/blacksail"]
 
 [workspace.package]
-version = "2.0.1"
+version = "2.1.0"
 edition = "2021"
 license = "MIT"
 

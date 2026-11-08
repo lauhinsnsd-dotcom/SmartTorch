@@ -43,7 +43,7 @@ pub fn color(rarity: Option<u8>) -> (u8, u8, u8) {
 /// The box's lines: a heading, then each seal picked as the game words it (without the "虛海寶藏" all start
 /// with, its colour word or category: the user's choice), in its rarity's colour.
 pub fn rows(picks: &[Pick]) -> Vec<(String, (u8, u8, u8))> {
-    let mut out = vec![(format!("黑帆 {}/{PER_RUN}", picks.len()), (232, 180, 74))];
+    let mut out = vec![(format!("黑帆備忘 {}/{PER_RUN}", picks.len()), (232, 180, 74))];
     for (i, p) in picks.iter().enumerate() {
         let what = match p.seal {
             Some(s) => short(s),
@@ -160,7 +160,7 @@ mod tests {
         let seal = identify(Some("財富"), "虛海寶藏基礎掉落中，追憶碎絮的掉落數量額外 + 53%", Some(2), false);
         let picks = vec![Pick { rarity: Some(2), category: Some("財富"), seal, before: false }, Pick { rarity: Some(4), category: None, seal: None, before: false }, Pick { rarity: Some(1), category: None, seal: None, before: true }];
         let r = rows(&picks);
-        assert_eq!(r[0].0, "黑帆 3/6");
+        assert_eq!(r[0].0, "黑帆備忘 3/6");
         assert_eq!(r[3].0, "3. （啟動前已選，內容未知）");
         assert_eq!(r[1], ("1. 基礎掉落中，追憶碎絮的掉落數量額外 + 53%".to_string(), (90, 165, 255)));
         assert_eq!(r[2], ("2. （讀不到）".to_string(), (255, 190, 70)));

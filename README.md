@@ -25,7 +25,9 @@ An unofficial, player-made tool, not affiliated with the game's makers. It only 
 |---|---|---|
 | **渴癮症助手 · Vorax helper** | 「手術準備」畫面標示建議的卡牌與培養槽、這一步達到 840k（彩箱）的機率，並在培養槽下方顯示讀到的內容，一眼核對。支援繁體、簡體、英文客戶端。 | Surgical Preparation: marks the card and tanks to pick and the odds of reaching 840k, with what was read under each tank to check at a glance. Traditional Chinese, Simplified Chinese and English clients. |
 | **囚獸助手 · Tartarus helper** | glcoder 的 [Tartarus Solver](https://github.com/glcoder/TartarusSolver)：自行下載後，SmartTorch 負責啟動、收起它的視窗、顯示統計。 | glcoder's [Tartarus Solver](https://github.com/glcoder/TartarusSolver): download it yourself; SmartTorch starts it, keeps its window out of the way and shows its statistics. |
+| **黑帆備忘 · Blacksail Notes** | 虛海封印秘語：每次選秘語時讀取卡片，在遊戲上的小視窗列出本局已選的秘語（最多 6 條），離開虛海終港後自動清空。小視窗可拖曳、調整大小，並可設為滑鼠穿透。 | Blacksail seals: each pick is read off the cards and listed in a small window over the game (up to 6), emptied once you leave the port. Drag it, resize it, or let clicks pass through it. |
 | **易火 · ETor** | 其他作者的收益統計工具「易火 ETor」的啟動器：自行安裝後，可在 SmartTorch 開啟它，或開遊戲時自動開啟。SmartTorch 不會修改或讀取它的資料。 | A launcher for ETor, another author's income tracker: install it yourself, then open it from SmartTorch or with the game. SmartTorch neither changes nor reads its data. |
+| **自訂啟動 · Custom launchers** | 自己選兩個程式（.exe），在 SmartTorch 一鍵開啟，或開遊戲時自動開啟（只開啟、不會關閉）。 | Two programs of your choice: open them from SmartTorch, or with the game (opened only, never closed). |
 | **流派碼 · Build codes** | 儲存自己常用的流派碼，按「複製」後到遊戲裡貼上。 | Keep the build codes you use; Copy one and paste it in the game. |
 
 一個主視窗、右下角一個圖示：開遊戲時工具自動啟動（每個工具可各自設定），關遊戲時自動停止。介面有繁體、简体、English 三種。
@@ -49,7 +51,7 @@ The first time, Windows may show "Windows protected your PC" (the program isn't 
 
 | 客戶端 · Client | 解析度 · Resolution |
 |---|---|
-| 繁體／簡體中文 · Chinese | 已測試（遊戲「介面縮放」用推薦值或最小值）：1920×1080、2560×1080、2560×1440、2560×1600；3840×2160 建議用最小值。其他解析度可能讀不準 · tested (the game's interface scale at its recommended value or the smallest): 1920×1080, 2560×1080, 2560×1440, 2560×1600; at 3840×2160 the smallest is advised. Others may be misread |
+| 繁體／簡體中文 · Chinese | 已測試（遊戲「介面縮放」用推薦值或最小值）：1920×1080、2560×1440、2560×1600；3840×2160 建議用最小值。其他解析度可能讀不準 · tested (the game's interface scale at its recommended value or the smallest): 1920×1080, 2560×1440, 2560×1600; at 3840×2160 the smallest is advised. Others may be misread |
 | English | 與原作者相同 · as the original Vorax solver reads it |
 
 請使用無邊框或視窗模式，不要用獨佔全螢幕。Play borderless or windowed, not in exclusive full screen.

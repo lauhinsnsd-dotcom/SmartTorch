@@ -3,6 +3,16 @@
 每個版本更新了什麼。有新版本時，SmartTorch 的更新提示也會顯示該版本的內容。
 What each version changed. When a new version is out, SmartTorch's update note shows its part.
 
+## v2.1.0
+
+**新工具 · New tools**
+- 黑帆備忘：虛海封印秘語。在主視窗「黑帆備忘」按「啟動」，每次選秘語時會讀取卡片，在遊戲上的小視窗列出本局已選的秘語（最多 6 條），離開虛海終港後自動清空。小視窗可拖曳、拖曳右下角調整大小，按「透明」讓滑鼠穿透清單，按「×」關閉。 Blacksail Notes: press Start on its page, and each seal picked is read off the cards and listed in a small window over the game (up to 6), emptied once you leave the port. Drag it, resize it from its lower right corner, let clicks pass through it (透明), or close it (×).
+- 自訂啟動：自己選兩個程式（.exe），可改名，在 SmartTorch 一鍵開啟；在「設定」可設定開遊戲時自動開啟（只開啟、不會關閉）。 Custom launchers: two programs of your choice, renamed as you like, opened from SmartTorch or with the game (Settings; opened only, never closed).
+
+**渴癮症助手 · Vorax helper**
+- 修正：3840×2160 介面縮放用最小值時，藥劑和器具的刷新次數一直讀成 0。 Fixed: at 3840×2160 on the smallest interface scale, the potions' and instruments' refreshes left were always read as 0.
+- 主視窗的解析度說明更正：中文客戶端支援 1920×1080、2560×1440、2560×1600 和 3840×2160（2560×1080 未支援）。 The main window's resolutions corrected: a Chinese client is supported at 1920×1080, 2560×1440, 2560×1600 and 3840×2160 (not 2560×1080).
+
 ## v2.0.1
 
 **解析度 · Resolutions**

@@ -153,7 +153,7 @@ function nav() {
   const items = [
     ["vorax", L("渴癮症助手", "Vorax helper"), v ? (v.running ? "g" : "n") : ""],
     ["tartarus", L("囚獸助手", "Tartarus helper"), t && t.installed ? (t.running ? "g" : "n") : ""],
-    ["blacksail", L("黑帆", "Blacksail"), S && S.blacksail ? (S.blacksail.on ? "g" : "n") : ""],
+    ["blacksail", L("黑帆備忘", "Blacksail Notes"), S && S.blacksail ? (S.blacksail.on ? "g" : "n") : ""],
     ["etor", L("易火", "ETor"), S && S.etor && S.etor.exe ? (S.etor.running ? "g" : "n") : ""],
     ["launch", L("自訂啟動", "Custom launchers"), launchDot()],
     ["codes", L("流派碼", "Build codes"), ""],
@@ -194,9 +194,9 @@ function ocrName(l) {
 
 function vorax() {
   const v = S.vorax;
-  // a Chinese client is read at 1920×1080, 2560×1080, 2560×1440, 2560×1600 and 3840×2160 only (tested); an English one as upstream reads it, at any size
+  // a Chinese client is read at 1920×1080, 2560×1440, 2560×1600 and 3840×2160 only (tested); an English one as upstream reads it, at any size
   const chinese = typeof v.ocr === "string" && /^zh/i.test(v.ocr);
-  const supported = (w, h) => !chinese || [[1920, 1080], [2560, 1080], [2560, 1440], [2560, 1600], [3840, 2160]].some(([a, b]) => w === a && h === b);
+  const supported = (w, h) => !chinese || [[1920, 1080], [2560, 1440], [2560, 1600], [3840, 2160]].some(([a, b]) => w === a && h === b);
   let gameRow;
   if (!v.game.open) gameRow = `${dot("n")}${L("未開啟遊戲", "The game isn't open")}`;
   else if (v.game.fullScreen) gameRow = `${dot("r")}${L("遊戲是獨佔全螢幕：請改為無邊框或視窗", "The game is in exclusive full screen: switch to borderless or windowed")} <button class="link" data-goto="help">${L("怎麼做", "How")}</button>`;
@@ -352,7 +352,7 @@ function guide() {
   <section class="card" aria-label="${L("教學", "Getting started")}">
     <div class="note" style="font-size:14px">${L("第一次使用請完成以下幾步", "The first time, do these")}</div>
     <div class="step"><div class="num">1</div><div><b>${L("在遊戲中開啟日誌", "Turn on the game's log")}</b><p>${L("按 Esc →「帳號相關」→「開啟日誌」，然後登出再登入。", "Press Esc → Account Related → Enable Log, then log out and in again.")}</p></div></div>
-    <div class="step"><div class="num">2</div><div><b>${L("遊戲使用無邊框或視窗模式", "Play borderless or windowed")}</b><p>${L("提示要疊在遊戲上，獨佔全螢幕看不到。中文客戶端支援 1920×1080、2560×1080、2560×1440、2560×1600 和 3840×2160，其他解析度可能讀不準。遊戲的介面縮放請用推薦值或最小值（3840×2160 建議用最小值）。", "The hints sit over the game: exclusive full screen hides them. A Chinese client is supported at 1920×1080, 2560×1080, 2560×1440, 2560×1600 and 3840×2160; an English client is read as the original Vorax solver reads it. Set the game's interface scale to its recommended value or the minimum (the minimum at 3840×2160).")}</p><p class="note">${L("作者平常用 2560×1440，這個最準；其他解析度測試的局數較少，可能還有沒發現的讀錯。遇到請多回報：一個人製作，每次都要自己跑充能測試，你們的回報對改善辨識很有幫助。", "The author plays at 2560×1440, the best read; the others have had fewer games of testing and may still misread. Please report what you find: it's one person's work, tested by playing, and your reports help a lot.")}</p></div></div>
+    <div class="step"><div class="num">2</div><div><b>${L("遊戲使用無邊框或視窗模式", "Play borderless or windowed")}</b><p>${L("提示要疊在遊戲上，獨佔全螢幕看不到。中文客戶端支援 1920×1080、2560×1440、2560×1600 和 3840×2160，其他解析度可能讀不準。遊戲的介面縮放請用推薦值或最小值（3840×2160 建議用最小值）。", "The hints sit over the game: exclusive full screen hides them. A Chinese client is supported at 1920×1080, 2560×1440, 2560×1600 and 3840×2160; an English client is read as the original Vorax solver reads it. Set the game's interface scale to its recommended value or the minimum (the minimum at 3840×2160).")}</p><p class="note">${L("作者平常用 2560×1440，這個最準；其他解析度測試的局數較少，可能還有沒發現的讀錯。遇到請多回報：一個人製作，每次都要自己跑充能測試，你們的回報對改善辨識很有幫助。", "The author plays at 2560×1440, the best read; the others have had fewer games of testing and may still misread. Please report what you find: it's one person's work, tested by playing, and your reports help a lot.")}</p></div></div>
     <div class="step"><div class="num">3</div><div><b>${L("選擇實習生雪莉等級", "Set your Intern Shelley level")}</b><p>${L(`決定手術用具可以刷新幾次，設錯會影響建議。目前：${v.shelley} 級（可刷新 ${v.rerolls} 次）。`, `It sets how often instruments can be rerolled; a wrong level skews the advice. Now: level ${v.shelley} (${v.rerolls} reroll${v.rerolls === 1 ? "" : "s"}).`)}</p>
       <div class="row" style="gap:8px;margin-top:10px">${[1, 2, 3, 4, 5, 6].map((n) => `<button class="pill ${v.shelley === n ? "on" : ""}" data-cmd="set" data-key="shelley" data-value="${n}">${n}</button>`).join("")}</div></div></div>
     <p class="para sep">${L("之後只要開遊戲，提示框就會出現在遊戲畫面上，照著做即可。", "Then just play: the hint shows over the game.")}</p>
@@ -365,7 +365,7 @@ function help() {
   const items = [
     [L("找不到遊戲日誌", "Game log not found"), L("先開啟遊戲。仍然找不到：確認已在遊戲中開啟日誌（Esc →「帳號相關」→「開啟日誌」，再登出登入），或在「渴癮症助手」頁按「選擇…」，選遊戲資料夾裡的 Game\\UE_game\\TorchLight\\Saved\\Logs\\UE_game.log。", "Start the game first. Still not found: make sure the game's log is on (Esc → Account Related → Enable Log, then log in again), or press Choose… on the Vorax helper page and pick Game\\UE_game\\TorchLight\\Saved\\Logs\\UE_game.log in the game's folder.")],
     [L("找到日誌，但遊戲沒有寫入", "The log is found, but the game isn't writing it"), L("遊戲尚未開啟日誌。按 Esc →「帳號相關」→「開啟日誌」，然後登出再登入，狀態就會變綠。", "The game's log is off. Press Esc → Account Related → Enable Log, then log out and in again: the dot turns green.")],
-    [L("解析度不在支援範圍", "A resolution that isn't supported"), L("中文客戶端支援 1920×1080、2560×1080、2560×1440、2560×1600 與 3840×2160（2560×1440 最準）；遊戲的介面縮放請用推薦值或最小值（3840×2160 建議用最小值）。其他解析度可能讀錯，建議改用其中一種；若想支援你的解析度，請用 Ctrl + Alt + B 記下畫面並回報問題。", "A Chinese client is supported at 1920×1080, 2560×1080, 2560×1440, 2560×1600 and 3840×2160 (2560×1440 reads best); set the game's interface scale to its recommended value or the minimum (the minimum at 3840×2160). Others may be misread. To have yours supported, set pictures aside with Ctrl + Alt + B and report a problem.")],
+    [L("解析度不在支援範圍", "A resolution that isn't supported"), L("中文客戶端支援 1920×1080、2560×1440、2560×1600 與 3840×2160（2560×1440 最準）；遊戲的介面縮放請用推薦值或最小值（3840×2160 建議用最小值）。其他解析度可能讀錯，建議改用其中一種；若想支援你的解析度，請用 Ctrl + Alt + B 記下畫面並回報問題。", "A Chinese client is supported at 1920×1080, 2560×1440, 2560×1600 and 3840×2160 (2560×1440 reads best); set the game's interface scale to its recommended value or the minimum (the minimum at 3840×2160). Others may be misread. To have yours supported, set pictures aside with Ctrl + Alt + B and report a problem.")],
     [L("卡片常常「未讀到」", "Cards often not read"), L("SmartTorch 的語言要和遊戲相同：中文遊戲用繁體或简体，英文遊戲用 English（「設定 › 一般」），因為卡名是用 SmartTorch 語言的文字辨識讀取。「文字辨識」那一行是黃點時，Windows 沒有中文文字辨識，卡片只能靠圖案辨認：請在 Windows「設定 › 時間與語言 › 語言與地區」新增中文。", "SmartTorch's language should match the game's: English for an English client, Traditional or Simplified Chinese for a Chinese one (Settings › General), as card names are read in SmartTorch's language. A yellow dot on Text reading means Windows has no Chinese text recognition and cards are told by their pictures only: add Chinese in Windows' Settings › Time & language › Language & region.")],
     [L("擷取不到遊戲畫面", "No picture of the game"), L("Windows 給 SmartTorch 的遊戲畫面是全黑或失敗。請把遊戲設為「無邊框」或「視窗」模式、關閉其他錄影或疊加在遊戲上的軟體、更新顯示卡驅動程式，然後重新開啟 SmartTorch。仍然不行，請按「回報問題」。", "Windows gave SmartTorch an all-black picture of the game, or none. Play borderless or windowed, close other recorders and overlays, update the graphics driver, and start SmartTorch again. Still nothing: press Report a problem.")],
     [L("遊戲是獨佔全螢幕", "The game is in exclusive full screen"), L("提示無法疊在獨佔全螢幕上。請在遊戲設定把顯示模式改為「無邊框」或「視窗」。", "The hints can't show over exclusive full screen. Switch the game's display mode to borderless or windowed.")],
@@ -402,13 +402,13 @@ function blacksail() {
     : L(`本局已選 ${b.picked}/6`, `${b.picked}/6 picked this run`);
   return `
   <div class="head">
-    <div><h1>${L("黑帆", "Blacksail")}</h1><div class="sub">${L("虛海封印秘語：在遊戲畫面上列出本局已選的秘語", "Blacksail seals: the ones picked this run, listed over the game")}</div></div>
+    <div><h1>${L("黑帆備忘", "Blacksail Notes")}</h1><div class="sub">${L("虛海封印秘語：在遊戲畫面上列出本局已選的秘語", "Blacksail seals: the ones picked this run, listed over the game")}</div></div>
     <div class="row">${state}
       <button class="btn big ${b.on ? "" : "gold"}" data-cmd="blacksail" data-on="${!b.on}">${b.on ? L("停止", "Stop") : L("啟動", "Start")}</button></div>
   </div>
   <section class="card" aria-label="${L("狀態", "Status")}">
     <div class="row">${dot(b.on ? "g" : "n")}<div>${now}</div></div>
-    <p class="para" style="margin:0">${L("啟動後，遊戲畫面上會出現「黑帆 0/6」小視窗。每次選擇封印秘語時，SmartTorch 會讀取卡片內容，將選中的秘語加入清單；離開虛海終港後自動清空。", "Once started, a small window (黑帆 0/6) shows over the game. Each time you pick a seal, SmartTorch reads the cards and adds the one picked to the list; it empties once you leave the port.")}</p>
+    <p class="para" style="margin:0">${L("啟動後，遊戲畫面上會出現「黑帆備忘 0/6」小視窗。每次選擇封印秘語時，SmartTorch 會讀取卡片內容，將選中的秘語加入清單；離開虛海終港後自動清空。", "Once started, a small window (黑帆備忘 0/6) shows over the game. Each time you pick a seal, SmartTorch reads the cards and adds the one picked to the list; it empties once you leave the port.")}</p>
     <p class="para" style="margin:0">${L("拖曳小視窗可移動位置；拖曳右下角（或右邊、下邊）可調整大小。按「透明」後滑鼠可穿透清單，再按一次即恢復；按「×」關閉小視窗（等同停止）。位置、大小會自動記住。", "Drag the window to move it; drag its lower right corner (or its right or lower edge) to resize it. 透明 (see-through) lets clicks pass through the list, press it again to undo; × closes it (the same as Stop). Its place and size are kept.")}</p>
   </section>
   <div class="tip"><b>${L("支援的解析度", "Screens supported")}</b> ${L("1920×1080 請使用「推薦值」介面縮放；2560×1440、2560×1600、3840×2160 使用「推薦值」或「最小」皆可。需使用無邊框或視窗模式。", "1920×1080: the recommended interface scale; 2560×1440, 2560×1600, 3840×2160: recommended or smallest. Borderless or windowed.")}</div>
