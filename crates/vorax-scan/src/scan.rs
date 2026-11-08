@@ -293,12 +293,13 @@ fn is_tank_stat(k: &str) -> bool {
 /// was taken for the protocols on (a 3840x2160 potion header read as the protocols': no refresh read at all, and
 /// the advice never refreshed).
 pub fn read_refreshes(img: &Img, g: &[f32], l: &crate::layout::Layout, data: &ScanData) -> (Option<i32>, FieldRead) {
-    let read_left = |refs: &indexmap::IndexMap<String, Vec<Vec<f64>>>| {
-        let rf = read_text(img, g, &l.refresh, TextKind::Refresh, refs);
+    let read_left_as = |kind: TextKind, refs: &indexmap::IndexMap<String, Vec<Vec<f64>>>| {
+        let rf = read_text(img, g, &l.refresh, kind, refs);
         let left: f64 = rf.as_ref().map_or(f64::NAN, |r| if r.text.is_empty() { 0.0 } else { r.text.parse::<f64>().unwrap_or(f64::NAN) });
         let ok = rf.as_ref().is_some_and(|r| left.fract() == 0.0 && (0.0..=9.0).contains(&left) && r.score >= DIGIT_MIN);
         (rf, left, ok)
     };
+    let read_left = |refs: &indexmap::IndexMap<String, Vec<Vec<f64>>>| read_left_as(TextKind::Refresh, refs);
     let (mut rf, mut left, mut ok) = read_left(&data.digits["refresh"]);
     // not in upstream: the Simplified Chinese client's "1" on the refresh button (a longer flag), which upstream's
     // references don't take for anything and count as no refreshes left: tried when upstream's read isn't sure
@@ -306,6 +307,17 @@ pub fn read_refreshes(img: &Img, g: &[f32], l: &crate::layout::Layout, data: &Sc
         let zh = read_left(&data.digits_with_zh("refresh"));
         if zh.2 {
             (rf, left, ok) = zh;
+        }
+    }
+    // not in upstream: no glyph at all, the count drawn taller than upstream lets in (3840x2160 at the smallest
+    // interface scale: every refresh count read as 0)
+    if !ok && rf.is_none() {
+        for refs in [data.digits["refresh"].clone(), data.digits_with_zh("refresh")] {
+            let tall = read_left_as(TextKind::RefreshTall, &refs);
+            if tall.2 {
+                (rf, left, ok) = tall;
+                break;
+            }
         }
     }
     let v = Some(if ok { left as i32 } else { 0 });

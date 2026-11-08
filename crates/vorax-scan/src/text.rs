@@ -8,6 +8,9 @@ pub enum TextKind {
     Label,
     Round,
     Refresh,
+    /// Not in upstream: the refresh count as it's drawn on a 3840x2160 screen at the smallest interface scale, taller
+    /// against its button than upstream measured (about 0.53 of the box): read the same way, a taller glyph let in.
+    RefreshTall,
 }
 
 impl TextKind {
@@ -15,7 +18,7 @@ impl TextKind {
         match self {
             TextKind::Label => "label",
             TextKind::Round => "round",
-            TextKind::Refresh => "refresh",
+            TextKind::Refresh | TextKind::RefreshTall => "refresh",
         }
     }
 }
@@ -90,7 +93,7 @@ fn test_for(img: &Img, r: &Rect, kind: TextKind) -> Box<dyn Fn(u8, u8, u8) -> bo
             let (_, s, v) = hsv(r, g, b);
             s > 0.2 && v > 0.45 && r >= g && g >= b
         }),
-        TextKind::Refresh => Box::new(|r, g, b| {
+        TextKind::Refresh | TextKind::RefreshTall => Box::new(|r, g, b| {
             let (_, s, v) = hsv(r, g, b);
             s < 0.35 && v > 0.6
         }),
@@ -173,9 +176,10 @@ pub fn glyphs(img: &Img, r: &Rect, kind: TextKind) -> Vec<Rect> {
     if start >= 0 {
         flush(start as usize, w, &mut out);
     }
-    if kind == TextKind::Refresh {
+    if kind == TextKind::Refresh || kind == TextKind::RefreshTall {
         let hf = h as f64;
-        return out.into_iter().filter(|g| g.h >= 0.25 * hf && g.h <= 0.5 * hf).last().into_iter().collect();
+        let most = if kind == TextKind::RefreshTall { 0.65 } else { 0.5 };
+        return out.into_iter().filter(|g| g.h >= 0.25 * hf && g.h <= most * hf).last().into_iter().collect();
     }
     let tall = out.iter().fold(0.0f64, |m, g| m.max(g.h));
     let mut widths: Vec<f64> = out.iter().map(|g| g.w).collect();

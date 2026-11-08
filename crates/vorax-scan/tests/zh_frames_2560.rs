@@ -1,6 +1,7 @@
 //! Boards from a Chinese client 2560 wide (fixtures/zh-frames-2560): 16:10 (2560x1600) at the game's recommended
 //! and smallest interface scales, the tanks, the round and the instruments read where the game puts them on a screen
-//! narrower than 16:9; and 2560x1440, the tanks' icons told apart behind short names.
+//! narrower than 16:9; 2560x1440, the tanks' icons told apart behind short names; and one 3840x2160 board at the
+//! smallest scale, its refreshes left.
 
 use std::path::PathBuf;
 use vorax_scan::{scan, scan_data, Img};
@@ -137,4 +138,23 @@ fn a_title_read_without_its_first_characters_is_told_by_the_picture() {
     assert_eq!(h, ["Xeno-Hormone", "Spinal Solution - Aemberon", "Slough Solution"]);
     let h = hand("xeno-1600-smallest.png", &["蛻 生 皮 溶 液", "細 肢 藥 粉 一 骨 衛 兵", "異 種 激 素"]);
     assert_eq!(h, ["Slough Solution", "Slender-Limb Powder - Bone Sentry", "Xeno-Hormone"]);
+}
+
+#[test]
+fn refreshes_left_at_3840_smallest_scale() {
+    // 3840x2160 at the smallest scale: the count on the refresh button is drawn taller against it than upstream
+    // measured, and was read as none left (0) on every board
+    use vorax_scan::titles::{read_titles_in, Script};
+    let data = scan_data();
+    let img = decode("potion-r1-2160-smallest.png");
+    let r = scan(&img, data, false);
+    assert_eq!(r.state.potion_refreshes, Some(3));
+    assert!(r.fields["refreshes"].sure);
+    let titles = ["\u{810a}\u{9ad3}\u{6eb6}\u{6db2}\u{4e00}\u{89c9}\u{9192}", "\u{5b6a}\u{751f}\u{6fc0}\u{7d20}\u{4e00}\u{86ca}\u{866b}", "\u{77f3}\u{5316}\u{810a}\u{9ad3}\u{6eb6}"];
+    let mut given = titles.iter();
+    let mut read = |_: &Img| given.next().map_or(String::new(), |t| t.to_string());
+    let read = read_titles_in(&img, r, data, &mut read, None, Script::Han);
+    assert_eq!(read.state.hand, ["Spinal Solution - Agito", "Twin Hormone - Pest", "Petrified Spinal Solution"]);
+    assert_eq!(read.state.potion_refreshes, Some(3));
+    assert_eq!(read.state.round, Some(1));
 }
