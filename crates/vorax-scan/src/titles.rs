@@ -396,6 +396,32 @@ fn picture_between(r: &[(String, f64)], pic: Option<&PictureRead>) -> Option<Str
     }
 }
 
+/// Not in upstream: the cards whose Chinese name ends in this one's, a few characters longer (靶向異種激素 for
+/// 異種激素, 強效祛異藥粉 for 祛異藥粉): a title read without its first characters names the shorter one clearly.
+fn longer_versions(data: &ScanData, phase: &str, name: &str) -> Vec<String> {
+    let zh = zh_names_for(data, phase);
+    let Some(own) = zh.get(name) else { return Vec::new() };
+    zh.iter().filter(|(n, forms)| *n != name && forms.iter().any(|f| own.iter().any(|o| f.chars().count() > o.chars().count() && f.ends_with(o.as_str())))).map(|(n, _)| n.clone()).collect()
+}
+
+/// Not in upstream: how far a longer version's picture must be ahead of the shorter one's to be taken over a title
+/// that names the shorter one (異種激素's own picture is 0.004-0.006 ahead of 靶向異種激素's, and the other way round,
+/// at 2560x1440 and 2560x1600; 藥劑箱（小） and 稀有藥劑箱（小）share their art, under 0.001 apart, and stay as read).
+const LONGER_PICTURE_GAP: f64 = 0.002;
+
+/// The longer version a card's picture clearly prefers to the one its title names, if one.
+fn longer_by_picture(data: &ScanData, phase: &str, named: &str, pic: Option<&PictureRead>) -> Option<String> {
+    let ranks = &pic?.ranks;
+    let score = |n: &str| ranks.iter().find(|(m, _)| m == n).map(|x| x.1);
+    let own = score(named)?;
+    longer_versions(data, phase, named)
+        .into_iter()
+        .filter_map(|n| score(&n).map(|q| (n, q)))
+        .filter(|(_, q)| q - own >= LONGER_PICTURE_GAP)
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|x| x.0)
+}
+
 fn settled(r: &[(String, f64)]) -> bool {
     r[0].1 >= MIN_Q && r[0].1 - r.get(1).map_or(f64::NEG_INFINITY, |x| x.1) >= GAP
 }
@@ -522,7 +548,8 @@ pub fn read_titles_in(img: &Img, reading: Reading, data: &ScanData, read_text: &
     let (phase, slots, _) = best.unwrap();
     let pos = l.hand_at(size);
 
-    let need: Vec<usize> = slots.iter().enumerate().filter(|(_, r)| !settled(r)).map(|(j, _)| j).collect();
+    // not in upstream: a title settled on a card with a longer version is checked against the picture too
+    let need: Vec<usize> = slots.iter().enumerate().filter(|(_, r)| !settled(r) || (han_client && !longer_versions(data, phase, &r[0].0).is_empty())).map(|(j, _)| j).collect();
     let from_reading = read == size && phase == header;
     let pics: HashMap<usize, PictureRead> = if from_reading {
         need.iter()
@@ -546,7 +573,12 @@ pub fn read_titles_in(img: &Img, reading: Reading, data: &ScanData, read_text: &
         let key = format!("hand{j}");
         let pic = pics.get(&j);
         let mut name: Option<String> = None;
-        if settled(r) {
+        if let Some(n) = (han_client && settled(r)).then(|| longer_by_picture(data, phase, &top.0, pic)).flatten() {
+            // not in upstream: the title names a card a longer one ends in, and the picture is the longer one's (its
+            // first characters not read: 靶向異種激素 as 異種激素 at 2560x1600, with nothing in the way)
+            fields.insert(key, FieldRead { sure: false, guess: Some(n.clone()), score: Some(top.1), second: second.map(|s| s.1) });
+            name = Some(n);
+        } else if settled(r) {
             name = Some(top.0.clone());
             fields.insert(key, FieldRead { sure: true, guess: name.clone(), score: Some(top.1), second: second.map(|s| s.1) });
         } else if let Some(n) = han_client.then(|| han_pick(data, phase, &texts[j])).flatten().filter(|n| !pic.is_some_and(|p| p.field.as_ref().is_some_and(|f| f.sure) && p.ranks.first().is_some_and(|x| x.0 != *n))) {

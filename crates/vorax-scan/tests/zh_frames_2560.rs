@@ -122,3 +122,19 @@ fn a_hand_of_five_at_the_recommended_scale() {
     let h = hand("potion-hand5-1600-recommended.png", &["麻 藥 酊 劑 - 覺 醒 者", "靶 向 異 種 激 素", "孿 生 激 素 一 蠱 蟲", "卵 殼 藥 粉", "化 骨 油 膏"]);
     assert_eq!(h, ["Anesthetic Tincture - Agito", "Targeted Xeno-Hormone", "Twin Hormone - Pest", "Eggshell Powder", "Osteolytic Ointment"]);
 }
+
+#[test]
+fn a_title_read_without_its_first_characters_is_told_by_the_picture() {
+    // 靶向異種激素 read as 異種激素 (Windows' reader left out 靶向, the title whole in the place read), at 2560x1600 and
+    // as it would be at 2560x1440: the picture is 靶向異種激素's
+    let h = hand("targeted-xeno-1600-recommended.png", &["誘 變 藥 粉", "脊 髓 溶 液 一 覺 醒 者", "異 種 激 素"]);
+    assert_eq!(h, ["Mutagenic Powder", "Spinal Solution - Agito", "Targeted Xeno-Hormone"]);
+    let h = hand("targeted-xeno-1440-recommended.png", &["軟 腦 膜 溶 液", "純 粹 活 蛭 溶 液", "異 種 激 素"]);
+    assert_eq!(h, ["Leptomeningeal Solution", "Pure Leech Solution", "Targeted Xeno-Hormone"]);
+    // and 異種激素 itself stays itself
+    // (one interface scale after the other, as a player's boards come: a reader keeps to the scale it last read at)
+    let h = hand("xeno-1440-recommended.png", &["異 種 激 素", "脊 髓 溶 液 一 異 魔", "蛻 生 皮 溶 液"]);
+    assert_eq!(h, ["Xeno-Hormone", "Spinal Solution - Aemberon", "Slough Solution"]);
+    let h = hand("xeno-1600-smallest.png", &["蛻 生 皮 溶 液", "細 肢 藥 粉 一 骨 衛 兵", "異 種 激 素"]);
+    assert_eq!(h, ["Slough Solution", "Slender-Limb Powder - Bone Sentry", "Xeno-Hormone"]);
+}

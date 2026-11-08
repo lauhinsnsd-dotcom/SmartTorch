@@ -9,6 +9,7 @@ What each version changed. When a new version is out, SmartTorch's update note s
 - 支援 16:10 螢幕（2560×1600 等）：以前培養槽全部讀不到、卡片常讀錯，現在介面縮放用推薦值或最小值都讀得準。 16:10 screens (2560×1600 and the like) are supported: the tanks weren't read at all and cards were often misread; at the recommended or the smallest interface scale they now read well.
 - 修正：名字較短的怪物（例如弓兵、輕弩兵、赤鏜螂）的種類圖示，常被誤認為覺醒者（2560×1440 等解析度都有）。 Fixed: monsters with short names (弓兵, 輕弩兵, 赤鏜螂…) often had their family icon taken for Agito's (at 2560×1440 too).
 - 修正：介面縮放用推薦值時，手上有 5 張藥劑卡（藥劑箱之後）中間那張常讀不到，旁邊的卡也可能讀錯（例如靶向異種激素被當成異種激素，建議放兩格）。 Fixed: at the recommended interface scale, a hand of five potions (after a Potion Kit) often missed its middle card and could misread the one beside it (靶向異種激素 taken for 異種激素, advised on two tanks).
+- 修正：「靶向異種激素」有時被讀成「異種激素」（卡名前面兩個字沒讀到），建議因此放錯格。現在卡名剛好是另一張卡名的後半段時，會再用卡面圖案確認（所有解析度）。 Fixed: 靶向異種激素 was at times read as 異種激素 (its first two characters missed), and advised on the wrong tanks. A title that is the end of a longer card's name is now checked against the card's picture (at every resolution).
 - 修正：畫面剛打開、顏色偏暗時，第一回合有時讀不到回合數和卡片。 Fixed: with the screen just opened and its colours a little dark, the first round's number and cards were sometimes not read.
 - 主視窗的解析度說明更新：支援 1920×1080、2560×1080、2560×1440、2560×1600 和 3840×2160（3840×2160 建議用最小介面縮放），這些解析度不再顯示「此解析度未測試」。 The main window's resolutions are brought up to date: 1920×1080, 2560×1080, 2560×1440, 2560×1600 and 3840×2160 (the smallest interface scale advised at 3840×2160) no longer show as untested.
 
